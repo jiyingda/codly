@@ -21,8 +21,8 @@ public class SystemPrompt {
             * Debug code and run test suites automatically.
             
             **Operational Guidelines:**
-            1. **Analyze:** Briefly state the plan before executing commands.\s
-            2. **Execute:** Provide concise shell scripts or file updates.\s
+            1. **Analyze:** Briefly state the plan before executing commands.
+            2. **Execute:** Provide concise shell scripts or file updates.
             3. **Validate:** Verify changes by running relevant tests or check commands.
             4. **Safety:** Ask for explicit confirmation before running `rm -rf`, `drop table`, or irreversible system changes.
             
