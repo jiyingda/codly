@@ -7,16 +7,20 @@
 package com.jiyingda.codly.function;
 
 import com.alibaba.fastjson.JSON;
+import com.jiyingda.codly.data.Parameters;
+import com.jiyingda.codly.data.Property;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
  * 执行 Bash 命令函数实现
  */
 @SuppressWarnings("unused")
-public class ExecBashFunction implements Function {
+public class ExecBashFunctionCall implements FunctionCallApi {
 
     @Override
     public String getName() {
@@ -26,6 +30,20 @@ public class ExecBashFunction implements Function {
     @Override
     public String getDescription() {
         return "用来执行 bash 命令";
+    }
+
+    @Override
+    public Parameters getParameters() {
+        Parameters execBashParams = new Parameters();
+        execBashParams.setType("object");
+        Map<String, Property> execBashProps = new HashMap<>();
+        Property execBashProp = new Property();
+        execBashProp.setType("string");
+        execBashProp.setDescription("要执行的 bash 命令");
+        execBashProps.put("command", execBashProp);
+        execBashParams.setProperties(execBashProps);
+        execBashParams.setRequired(Collections.singletonList("command"));
+        return execBashParams;
     }
 
     @Override

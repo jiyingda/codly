@@ -6,7 +6,7 @@
  * ## 架构设计
  * 
  * ### 1. 核心接口：Function
- * - 定义所有 tool function 需要实现的标准
+ * - 定义所有 tool functionCallApi 需要实现的标准
  * - 包含三个方法：
  *   - getName(): 获取函数名称
  *   - getDescription(): 获取函数描述
@@ -32,7 +32,7 @@
  * ### 第一步：创建新的 Function 实现类
  * 
  * ```java
- * package com.jiyingda.codly.function;
+ * package com.jiyingda.codly.functionCallApi;
  * 
  * public class MyCustomFunction implements Function {
  * 
@@ -91,7 +91,7 @@
  * ## 文件结构
  * 
  * ```
- * com.jiyingda.codly.function/
+ * com.jiyingda.codly.functionCallApi/
  * ├── Function.java                 # 核心接口
  * ├── ReadFileFunction.java         # 具体实现 1
  * ├── SearchFileFunction.java       # 具体实现 2

@@ -7,14 +7,18 @@
 package com.jiyingda.codly.function;
 
 import com.alibaba.fastjson.JSON;
+import com.jiyingda.codly.data.Parameters;
+import com.jiyingda.codly.data.Property;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
  * 读取文件函数实现
  */
 @SuppressWarnings("unused")
-public class ReadFileFunction implements Function {
+public class ReadFileFunctionCall implements FunctionCallApi {
 
     @Override
     public String getName() {
@@ -24,6 +28,20 @@ public class ReadFileFunction implements Function {
     @Override
     public String getDescription() {
         return "用来读取指定的文件内容";
+    }
+
+    @Override
+    public Parameters getParameters() {
+        Parameters readFileParams = new Parameters();
+        readFileParams.setType("object");
+        Map<String, Property> readFileProps = new HashMap<>();
+        Property readFileProp = new Property();
+        readFileProp.setType("string");
+        readFileProp.setDescription("文件完整路径");
+        readFileProps.put("filePath", readFileProp);
+        readFileParams.setProperties(readFileProps);
+        readFileParams.setRequired(Collections.singletonList("filePath"));
+        return readFileParams;
     }
 
     @Override

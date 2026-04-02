@@ -6,7 +6,11 @@
  */
 package com.jiyingda.codly.function;
 
+import com.jiyingda.codly.data.Tool;
+
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -16,24 +20,32 @@ import java.util.Map;
 @SuppressWarnings("unused")
 public class FunctionManager {
 
-    private final Map<String, Function> functions = new HashMap<>();
+    private final Map<String, FunctionCallApi> functions = new HashMap<>();
+    private final List<Tool> tools = new ArrayList<>();
 
     /**
      * 构造函数，初始化默认的 functions
      */
     public FunctionManager() {
-        registerFunction(new ReadFileFunction());
-        registerFunction(new SearchFileFunction());
-        registerFunction(new ExecBashFunction());
+        registerFunction(new ReadFileFunctionCall());
+        registerFunction(new SearchFileFunctionCall());
+        registerFunction(new ExecBashFunctionCall());
+        for (FunctionCallApi functionCall : functions.values()) {
+            tools.add(Tool.createFunction(functionCall));
+        }
+    }
+
+    public List<Tool> getTools() {
+        return new ArrayList<>(tools);
     }
 
     /**
      * 注册一个 Function
      *
-     * @param function Function 实现类
+     * @param functionCallApi Function 实现类
      */
-    public void registerFunction(Function function) {
-        functions.put(function.getName(), function);
+    public void registerFunction(FunctionCallApi functionCallApi) {
+        functions.put(functionCallApi.getName(), functionCallApi);
     }
 
     /**
@@ -42,7 +54,7 @@ public class FunctionManager {
      * @param name 函数名称
      * @return Function 实现，如果不存在则返回 null
      */
-    public Function getFunction(String name) {
+    public FunctionCallApi getFunction(String name) {
         return functions.get(name);
     }
 
@@ -64,11 +76,11 @@ public class FunctionManager {
      * @return 执行结果
      */
     public String execute(String functionName, String argsJson) {
-        Function function = getFunction(functionName);
-        if (function == null) {
+        FunctionCallApi functionCallApi = getFunction(functionName);
+        if (functionCallApi == null) {
             return "未知的函数：" + functionName;
         }
-        return function.execute(argsJson);
+        return functionCallApi.execute(argsJson);
     }
 
     /**
@@ -76,7 +88,7 @@ public class FunctionManager {
      *
      * @return Functions 的 Map
      */
-    public Map<String, Function> getAllFunctions() {
+    public Map<String, FunctionCallApi> getAllFunctions() {
         return new HashMap<>(functions);
     }
 }

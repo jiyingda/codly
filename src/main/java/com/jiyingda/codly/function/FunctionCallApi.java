@@ -6,12 +6,14 @@
  */
 package com.jiyingda.codly.function;
 
+import com.jiyingda.codly.data.Parameters;
+
 /**
  * Function 接口
  * 定义所有 tool function 需要实现的标准
  */
 @SuppressWarnings("unused")
-public interface Function {
+public interface FunctionCallApi {
 
     /**
      * 获取函数名称
@@ -28,6 +30,13 @@ public interface Function {
     String getDescription();
 
     /**
+     * 获取函数参数定义
+     *
+     * @return 参数定义
+     */
+    Parameters getParameters();
+
+    /**
      * 执行函数
      *
      * @param argsJson 函数参数（JSON 格式）
@@ -35,4 +44,6 @@ public interface Function {
      */
     String execute(String argsJson);
 }
+
+
 

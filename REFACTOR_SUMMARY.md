@@ -3,7 +3,7 @@
 ## 项目架构演进
 
 ### 阶段 1: 初始状态
-- 所有 POJO 类和 function 处理都混在 CodlyMain.java 中
+- 所有 POJO 类和 functionCallApi 处理都混在 CodlyMain.java 中
 - 代码耦合度高，难以维护和扩展
 
 ### 阶段 2: 数据模型分离
@@ -11,7 +11,7 @@
 - 包含：StreamResponse, StreamChoice, StreamDelta, ToolCall, FunctionCall, ChatRequest, Tool, Function, Parameters, Property, Message
 
 ### 阶段 3: Function 执行逻辑分离（临时方案）
-- 创建 FunctionExecutor 统一管理 function 执行
+- 创建 FunctionExecutor 统一管理 functionCallApi 执行
 - 虽然分离了逻辑，但仍缺乏灵活性和可扩展性
 
 ### 阶段 4: 完整的设计模式重构（最终方案）✅
@@ -35,7 +35,7 @@ codly/src/main/java/com/jiyingda/codly/
 │   ├── StreamResponse.java                # 流式响应
 │   ├── Tool.java                          # 工具定义
 │   └── ToolCall.java                      # 工具调用
-└── function/                               # 函数管理包
+└── functionCallApi/                               # 函数管理包
     ├── Function.java                      # ✨ 核心接口
     ├── FunctionManager.java               # ✨ 函数管理器
     ├── ReadFileFunction.java              # 具体实现：读取文件
@@ -54,7 +54,7 @@ public interface Function {
     String execute(String argsJson);
 }
 ```
-**作用**: 定义所有 function 的标准契约
+**作用**: 定义所有 functionCallApi 的标准契约
 
 ### 2. Function 实现类
 - **ReadFileFunction**: 实现文件读取功能
@@ -66,7 +66,7 @@ public interface Function {
 ### 3. FunctionManager
 ```java
 public class FunctionManager {
-    public void registerFunction(Function function);
+    public void registerFunction(Function functionCallApi);
     public Function getFunction(String name);
     public boolean hasFunction(String name);
     public String execute(String functionName, String argsJson);
@@ -97,24 +97,25 @@ public class CodlyMain {
 ### 示例：添加 "hello_world" 函数
 
 **第一步**: 创建 `HelloWorldFunction.java`
-```java
-package com.jiyingda.codly.function;
 
-public class HelloWorldFunction implements Function {
-    @Override
-    public String getName() {
-        return "hello_world";
-    }
-    
-    @Override
-    public String getDescription() {
-        return "返回 Hello World";
-    }
-    
-    @Override
-    public String execute(String argsJson) {
-        return "Hello, World!";
-    }
+```java
+package com.jiyingda.codly.functionCallApi;
+
+public class HelloWorldFunction implements FunctionCall {
+   @Override
+   public String getName() {
+      return "hello_world";
+   }
+
+   @Override
+   public String getDescription() {
+      return "返回 Hello World";
+   }
+
+   @Override
+   public String execute(String argsJson) {
+      return "Hello, World!";
+   }
 }
 ```
 
@@ -128,23 +129,23 @@ public FunctionManager() {
 }
 ```
 
-**就这样！** 新的 function 已经可用，无需修改其他代码。
+**就这样！** 新的 functionCallApi 已经可用，无需修改其他代码。
 
 ## 架构优势
 
 | 方面 | 优势 |
 |------|------|
 | **可维护性** | 代码清晰分层，职责明确 |
-| **可扩展性** | 添加新 function 只需创建新类 + 一行注册代码 |
-| **可测试性** | 每个 function 可独立单元测试 |
-| **灵活性** | 支持动态注册/注销 function |
-| **解耦合** | function 实现与调用方完全隔离 |
+| **可扩展性** | 添加新 functionCallApi 只需创建新类 + 一行注册代码 |
+| **可测试性** | 每个 functionCallApi 可独立单元测试 |
+| **灵活性** | 支持动态注册/注销 functionCallApi |
+| **解耦合** | functionCallApi 实现与调用方完全隔离 |
 
 ## 关键改进
 
 1. ✅ **从硬编码转向配置**: Tool 定义不再硬编码，从 Function 接口动态获取
 2. ✅ **从条件判断转向多态**: 不再需要 if-else 链，通过接口多态处理
-3. ✅ **从单例转向工厂**: FunctionManager 集中管理所有 function 实例
+3. ✅ **从单例转向工厂**: FunctionManager 集中管理所有 functionCallApi 实例
 4. ✅ **从紧耦合转向松耦合**: CodlyMain 只依赖 FunctionManager，不依赖具体实现
 5. ✅ **从静态方法转向实例方法**: 支持更灵活的生命周期管理
 
@@ -152,18 +153,18 @@ public FunctionManager() {
 
 ✅ **无编译错误**
 - CodlyMain.java: 编译成功
-- 所有 function 实现类: 编译成功
+- 所有 functionCallApi 实现类: 编译成功
 - FunctionManager: 编译成功
 
 ## 下一步建议
 
 1. 编写单元测试，为每个 Function 实现添加测试用例
-2. 考虑添加更多 function，如：
+2. 考虑添加更多 functionCallApi，如：
    - `WriteFileFunction`: 写入文件
    - `ListDirectoryFunction`: 列出目录内容
    - `HttpRequestFunction`: 发送 HTTP 请求
-3. 考虑添加 function 配置文件，支持动态加载
-4. 考虑添加 function 缓存机制，提高性能
+3. 考虑添加 functionCallApi 配置文件，支持动态加载
+4. 考虑添加 functionCallApi 缓存机制，提高性能
 
 ---
 

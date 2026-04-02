@@ -8,17 +8,13 @@ package com.jiyingda.codly;
 
 import com.alibaba.fastjson.JSON;
 import com.jiyingda.codly.data.ChatRequest;
-import com.jiyingda.codly.data.FunctionCall;
 import com.jiyingda.codly.data.Message;
-import com.jiyingda.codly.data.Parameters;
-import com.jiyingda.codly.data.Property;
 import com.jiyingda.codly.data.StreamChoice;
 import com.jiyingda.codly.data.StreamDelta;
 import com.jiyingda.codly.data.StreamResponse;
-import com.jiyingda.codly.data.Tool;
 import com.jiyingda.codly.data.ToolCall;
-import com.jiyingda.codly.function.Function;
 import com.jiyingda.codly.function.FunctionManager;
+import com.jiyingda.codly.prompt.SystemPrompt;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -30,8 +26,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,7 +52,7 @@ import java.util.Map;
 public class CodlyMain {
 
     private static final String API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
-    private static String API_KEY;
+    private static final String API_KEY = System.getenv("DASHSCOPE_API_KEY");
     private static final String MODEL = "qwen3.5-plus";
     private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
     private final FunctionManager functionManager;
@@ -68,12 +62,11 @@ public class CodlyMain {
     }
 
     public static void main(String[] args) {
-        API_KEY = args[0];
 
         List<Message> memory = new ArrayList<>();
-        memory.add(Message.fromSystem("你是一个编程 agent，处于 cli 模式下，你的任务是辅助用户完成编程等工作。回答简洁、友好、正式。"));
+        memory.add(Message.fromSystem(SystemPrompt.SOUL_PROMPT));
         CodlyMain cli = new CodlyMain();
-        System.out.println("欢迎使用 CodeCli，输入对话内容开始与通义千模型对话（输入 quit 退出）...");
+        System.out.println("欢迎使用 Codly，输入对话内容开始与模型对话（输入 /quit 退出）...");
         System.out.print("> ");
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
@@ -116,59 +109,7 @@ public class CodlyMain {
         chatRequest.setResult_format("message");
 
         // 从 FunctionManager 获取所有已注册的 functions 并转换为 tools
-        List<Tool> tools = new ArrayList<>();
-
-        // 添加 read_file 工具
-        Parameters readFileParams = new Parameters();
-        readFileParams.setType("object");
-        Map<String, Property> readFileProps = new HashMap<>();
-        Property readFileProp = new Property();
-        readFileProp.setType("string");
-        readFileProp.setDescription("文件完整路径");
-        readFileProps.put("filePath", readFileProp);
-        readFileParams.setProperties(readFileProps);
-        readFileParams.setRequired(Collections.singletonList("filePath"));
-        Function readFileFunc = functionManager.getFunction("read_file");
-        if (readFileFunc != null) {
-            tools.add(Tool.createFunction(readFileFunc.getName(), readFileFunc.getDescription(), readFileParams));
-        }
-
-        // 添加 exec_bash 工具
-        Parameters execBashParams = new Parameters();
-        execBashParams.setType("object");
-        Map<String, Property> execBashProps = new HashMap<>();
-        Property execBashProp = new Property();
-        execBashProp.setType("string");
-        execBashProp.setDescription("要执行的 bash 命令");
-        execBashProps.put("command", execBashProp);
-        execBashParams.setProperties(execBashProps);
-        execBashParams.setRequired(Collections.singletonList("command"));
-        Function execBashFunc = functionManager.getFunction("exec_bash");
-        if (execBashFunc != null) {
-            tools.add(Tool.createFunction(execBashFunc.getName(), execBashFunc.getDescription(), execBashParams));
-        }
-
-        // 添加 search_file 工具
-        Parameters searchFileParams = new Parameters();
-        searchFileParams.setType("object");
-        Map<String, Property> searchFileProps = new HashMap<>();
-        Property patternProp = new Property();
-        patternProp.setType("string");
-        patternProp.setDescription("搜索模式，如 *.java 或文件名");
-        searchFileProps.put("pattern", patternProp);
-        Property directoryProp = new Property();
-        directoryProp.setType("string");
-        directoryProp.setDescription("搜索目录，默认为当前目录");
-        searchFileProps.put("directory", directoryProp);
-        searchFileParams.setProperties(searchFileProps);
-        searchFileParams.setRequired(Collections.singletonList("pattern"));
-        Function searchFileFunc = functionManager.getFunction("search_file");
-        if (searchFileFunc != null) {
-            tools.add(Tool.createFunction(searchFileFunc.getName(), searchFileFunc.getDescription(), searchFileParams));
-        }
-
-        chatRequest.setTools(tools);
-
+        chatRequest.setTools(functionManager.getTools());
 
         chatRequest.setMessages(messages);
 
@@ -233,7 +174,7 @@ public class CodlyMain {
                                             }
 
                                             if (existing.getFunction() == null) {
-                                                existing.setFunction(new FunctionCall());
+                                                existing.setFunction(new com.jiyingda.codly.data.FunctionCall());
                                             }
 
                                             // 累积 name（只在第一个 chunk 有）

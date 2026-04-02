@@ -7,16 +7,20 @@
 package com.jiyingda.codly.function;
 
 import com.alibaba.fastjson.JSON;
+import com.jiyingda.codly.data.Parameters;
+import com.jiyingda.codly.data.Property;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
  * 搜索文件函数实现
  */
 @SuppressWarnings("unused")
-public class SearchFileFunction implements Function {
+public class SearchFileFunctionCall implements FunctionCallApi {
 
     @Override
     public String getName() {
@@ -26,6 +30,24 @@ public class SearchFileFunction implements Function {
     @Override
     public String getDescription() {
         return "搜索文件的技能，用于在项目目录中查找指定名称或模式的文件";
+    }
+
+    @Override
+    public Parameters getParameters() {
+        Parameters searchFileParams = new Parameters();
+        searchFileParams.setType("object");
+        Map<String, Property> searchFileProps = new HashMap<>();
+        Property patternProp = new Property();
+        patternProp.setType("string");
+        patternProp.setDescription("搜索模式，如 *.java 或文件名");
+        searchFileProps.put("pattern", patternProp);
+        Property directoryProp = new Property();
+        directoryProp.setType("string");
+        directoryProp.setDescription("搜索目录，默认为当前目录");
+        searchFileProps.put("directory", directoryProp);
+        searchFileParams.setProperties(searchFileProps);
+        searchFileParams.setRequired(Collections.singletonList("pattern"));
+        return searchFileParams;
     }
 
     @Override

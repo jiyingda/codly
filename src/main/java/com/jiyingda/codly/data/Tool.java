@@ -6,6 +6,8 @@
  */
 package com.jiyingda.codly.data;
 
+import com.jiyingda.codly.function.FunctionCallApi;
+
 /**
  * Tool 定义
  */
@@ -37,6 +39,17 @@ public class Tool {
         function.setName(name);
         function.setDescription(description);
         function.setParameters(parameters);
+        tool.setFunction(function);
+        return tool;
+    }
+
+    public static Tool createFunction(FunctionCallApi fca) {
+        Tool tool = new Tool();
+        tool.setType("function");
+        Function function = new Function();
+        function.setName(fca.getName());
+        function.setDescription(fca.getDescription());
+        function.setParameters(fca.getParameters());
         tool.setFunction(function);
         return tool;
     }
