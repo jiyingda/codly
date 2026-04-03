@@ -4,7 +4,9 @@ import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.jline.utils.InfoCmp;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.List;
 
 /**
@@ -31,6 +33,7 @@ public class ModelSelector {
         try (Terminal terminal = TerminalBuilder.builder()
                 .system(true)
                 .jna(true)
+                .dumb(true)  // 如果系统终端不可用，回退到哑终端
                 .build()) {
 
             terminal.enterRawMode();
@@ -80,8 +83,8 @@ public class ModelSelector {
             }
 
         } catch (IOException e) {
-            System.err.println("终端交互失败：" + e.getMessage());
-            return null;
+            System.err.println("终端交互失败，切换到文本菜单模式：" + e.getMessage());
+            return selectViaTextMenu(models, currentModel);
         }
     }
 
@@ -106,5 +109,37 @@ public class ModelSelector {
             terminal.puts(InfoCmp.Capability.clr_eol);
         }
         terminal.flush();
+    }
+
+    /**
+     * 文本菜单选择（当系统终端不可用时的备用方案）
+     */
+    private static String selectViaTextMenu(List<String> models, String currentModel) {
+        System.out.println("\n选择模型（输入序号 + Enter）：");
+        for (int i = 0; i < models.size(); i++) {
+            String model = models.get(i);
+            String marker = model.equals(currentModel) ? " (当前) " : "";
+            System.out.println((i + 1) + ". " + model + marker);
+        }
+        System.out.print("请输入序号 [1-" + models.size() + "]: ");
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+            String input = reader.readLine();
+            int choice = Integer.parseInt(input.trim());
+            if (choice >= 1 && choice <= models.size()) {
+                String chosen = models.get(choice - 1);
+                System.out.println("已切换到模型：" + CYAN + chosen + RESET);
+                return chosen;
+            } else {
+                System.out.println("无效的选择");
+                return null;
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("输入无效，请输入数字");
+            return null;
+        } catch (IOException e) {
+            System.err.println("读取输入失败：" + e.getMessage());
+            return null;
+        }
     }
 }
