@@ -122,7 +122,7 @@ public class CodlyMain {
             .post(RequestBody.create(jsonBody, JSON_MEDIA_TYPE))
             .build();
 
-        System.out.print("AI: ");
+        System.out.print(">>: ");
 
         // 流式输出时累积内容
         StringBuilder fullContent = new StringBuilder();
