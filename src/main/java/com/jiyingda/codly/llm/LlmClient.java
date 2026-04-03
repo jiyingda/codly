@@ -235,4 +235,52 @@ public class LlmClient {
 
         return fullContent.toString();
     }
+
+    /**
+     * 根据首轮对话内容异步生成一个简短标题（≤10字），完成后回调。
+     *
+     * @param userMessage 用户首条消息
+     * @param onTitle     标题生成后的回调
+     */
+    public void generateTitleAsync(String userMessage, Consumer<String> onTitle) {
+        Thread t = new Thread(() -> {
+
+            List<Message> messages = List.of(
+                Message.fromSystem("你是一个标题生成助手，根据用户的消息生成一个简短的对话标题。要求：不超过10个字，不加引号，不加标点，只输出标题本身。"),
+                Message.fromUser(userMessage)
+            );
+
+            ChatRequest req = new ChatRequest();
+            req.setModel("qwen-turbo");
+            req.setStream(false);
+            req.setTemperature(0.3);
+            req.setEnable_thinking(false);
+            req.setResult_format("message");
+            req.setMessages(messages);
+
+            String jsonBody = JSON.toJSONString(req);
+            Request request = new Request.Builder()
+                .url(API_URL)
+                .addHeader("Authorization", "Bearer " + apiKey)
+                .addHeader("Content-Type", "application/json")
+                .post(RequestBody.create(jsonBody, JSON_MEDIA_TYPE))
+                .build();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) return;
+                String body = response.body().string();
+                com.alibaba.fastjson.JSONObject json = JSON.parseObject(body);
+                String title = json
+                    .getJSONArray("choices")
+                    .getJSONObject(0)
+                    .getJSONObject("message")
+                    .getString("content");
+                if (title != null && !title.isBlank()) {
+                    onTitle.accept(title.trim());
+                }
+            } catch (Exception ignored) {}
+        });
+        t.setDaemon(true);
+        t.start();
+    }
 }

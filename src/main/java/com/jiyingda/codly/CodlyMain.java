@@ -6,11 +6,12 @@
  */
 package com.jiyingda.codly;
 
+import com.jiyingda.codly.command.CommandContext;
 import com.jiyingda.codly.command.CommandDispatcher;
-import com.jiyingda.codly.command.CommandDispatcher.CommandResult;
+import com.jiyingda.codly.command.CommandDispatcher.DispatchResult;
 import com.jiyingda.codly.data.Message;
 import com.jiyingda.codly.llm.LlmClient;
-import com.jiyingda.codly.llm.ModelSelector;
+import com.jiyingda.codly.prompt.Banner;
 import com.jiyingda.codly.prompt.SystemPrompt;
 
 import java.io.BufferedReader;
@@ -32,8 +33,11 @@ public class CodlyMain {
 
         LlmClient llmClient = new LlmClient();
         CommandDispatcher dispatcher = new CommandDispatcher();
+        CommandContext ctx = new CommandContext(memory, llmClient);
+        boolean titleGenerated = false;
 
-        System.out.println("欢迎使用 Codly，输入对话内容开始与模型对话（输入 /help 查看命令）...");
+        System.out.println(Banner.TEXT);
+        System.out.println("  输入对话内容开始编程，/help 查看可用命令");
         System.out.print("> ");
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
@@ -42,33 +46,24 @@ public class CodlyMain {
                 if (line.trim().isEmpty()) {
                     continue;
                 }
-                CommandResult result = dispatcher.dispatch(line);
-                if (result == CommandResult.QUIT) {
+                DispatchResult result = dispatcher.dispatch(line, ctx);
+                if (result == DispatchResult.QUIT) {
                     break;
-                } else if (result == CommandResult.CLEAR) {
-                    memory.clear();
-                    memory.add(Message.fromSystem(SystemPrompt.SOUL_PROMPT));
-                    System.out.println("对话内容已清空");
+                } else if (result == DispatchResult.HANDLED) {
                     System.out.print("> ");
                     continue;
-                } else if (result == CommandResult.HELP) {
-                    System.out.println(CommandDispatcher.helpText());
-                    System.out.print("> ");
-                    continue;
-                } else if (result == CommandResult.MODEL) {
-                    String chosen = ModelSelector.select(LlmClient.AVAILABLE_MODELS, llmClient.getModel());
-                    if (chosen != null) {
-                        llmClient.setModel(chosen);
-                    }
-                    System.out.print("> ");
-                    continue;
-                } else if (result == CommandResult.UNKNOWN) {
+                } else if (result == DispatchResult.UNKNOWN) {
                     System.out.println("未知命令，输入 /help 查看可用命令");
                     System.out.print("> ");
                     continue;
                 }
                 memory.add(Message.fromUser(line));
-                System.out.print(">>: ");
+                if (!titleGenerated) {
+                    titleGenerated = true;
+                    final String firstMessage = line;
+                    llmClient.generateTitleAsync(firstMessage, title -> System.out.print("\033]0;Codly — " + title + "\007"));
+                }
+                System.out.print(">> ");
                 String res = llmClient.chat(memory, System.out::print);
                 memory.add(Message.formAssistant(res));
                 System.out.println();
