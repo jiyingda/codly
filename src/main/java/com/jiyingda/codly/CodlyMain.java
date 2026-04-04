@@ -11,6 +11,9 @@ import com.jiyingda.codly.command.CommandDispatcher;
 import com.jiyingda.codly.command.CommandDispatcher.DispatchResult;
 import com.jiyingda.codly.data.Message;
 import com.jiyingda.codly.llm.LlmClient;
+import com.jiyingda.codly.llm.LlmProvider;
+import com.jiyingda.codly.config.Config;
+import com.jiyingda.codly.config.ConfigException;
 import com.jiyingda.codly.constants.Banner;
 import com.jiyingda.codly.prompt.SystemPrompt;
 import org.jline.reader.EndOfFileException;
@@ -41,11 +44,41 @@ public class CodlyMain {
         // 禁用 JLine3 JNA provider 弃用警告
         System.setProperty("org.jline.terminal.disableDeprecatedProviderWarning", "true");
 
+        // 检查配置
+        Config config = Config.getInstance();
+        if (!config.isConfigLoaded()) {
+            printBanner();
+            System.err.println();
+            System.err.println("  错误：" + config.getLoadError());
+            System.err.println("  请创建配置文件：" + Config.getConfigPath());
+            System.err.println();
+            System.err.println("  配置文件格式:");
+            System.err.println("  {");
+            System.err.println("    \"apiKey\": \"your-api-key-here\",");
+            System.err.println("    \"enableThinking\": true,");
+            System.err.println("    \"defaultModel\": \"qwen3.5-plus\",");
+            System.err.println("    \"availableModels\": [...]");
+            System.err.println("  }");
+            System.err.println();
+            return;
+        }
+
+        LlmProvider llmClient;
+        try {
+            llmClient = LlmClient.create();
+        } catch (ConfigException e) {
+            printBanner();
+            System.err.println();
+            System.err.println("  错误：" + e.getMessage());
+            System.err.println("  请检查配置文件：" + Config.getConfigPath());
+            System.err.println();
+            return;
+        }
+
         List<Message> memory = new ArrayList<>();
         memory.add(Message.fromSystem(SystemPrompt.SOUL_PROMPT));
 
         Path startupPath = Paths.get("").toAbsolutePath().normalize();
-        LlmClient llmClient = new LlmClient();
         CommandDispatcher dispatcher = new CommandDispatcher();
         CommandContext ctx = new CommandContext(memory, llmClient, startupPath);
         boolean titleGenerated = false;

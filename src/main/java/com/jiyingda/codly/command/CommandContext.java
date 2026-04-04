@@ -1,7 +1,7 @@
 package com.jiyingda.codly.command;
 
 import com.jiyingda.codly.data.Message;
-import com.jiyingda.codly.llm.LlmClient;
+import com.jiyingda.codly.llm.LlmProvider;
 import com.jiyingda.codly.prompt.SystemPrompt;
 
 import java.nio.file.Path;
@@ -13,10 +13,10 @@ import java.util.List;
 public class CommandContext {
 
     private final List<Message> memory;
-    private final LlmClient llmClient;
+    private final LlmProvider llmClient;
     private final Path startupPath;
 
-    public CommandContext(List<Message> memory, LlmClient llmClient, Path startupPath) {
+    public CommandContext(List<Message> memory, LlmProvider llmClient, Path startupPath) {
         this.memory = memory;
         this.llmClient = llmClient;
         this.startupPath = startupPath;
@@ -26,7 +26,7 @@ public class CommandContext {
         return memory;
     }
 
-    public LlmClient getLlmClient() {
+    public LlmProvider getLlmClient() {
         return llmClient;
     }
 
