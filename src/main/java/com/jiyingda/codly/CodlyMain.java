@@ -16,6 +16,7 @@ import com.jiyingda.codly.prompt.SystemPrompt;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.Reference;
 import org.jline.reader.UserInterruptException;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -50,7 +51,7 @@ public class CodlyMain {
         CommandContext ctx = new CommandContext(memory, llmClient, startupPath);
         boolean titleGenerated = false;
 
-        System.out.println(Banner.TEXT);
+        printBanner();
         System.out.println("  输入对话内容开始编程，/help 查看可用命令");
 
         try (Terminal terminal = TerminalBuilder.builder()
@@ -62,19 +63,20 @@ public class CodlyMain {
             LineReader reader = LineReaderBuilder.builder()
                     .terminal(terminal)
                     .build();
+            reader.getKeyMaps().get(LineReader.MAIN)
+                    .bind(new Reference(LineReader.KILL_WHOLE_LINE), "^U");
 
             while (true) {
                 String line;
                 try {
                     line = reader.readLine(PROMPT);
                 } catch (UserInterruptException e) {
-                    // Ctrl+C: cancel current input and keep REPL alive.
-                    System.out.println();
-                    continue;
-                } catch (EndOfFileException e) {
-                    // Ctrl+D: exit REPL.
+                    // Ctrl+C: exit REPL.
                     System.out.println();
                     break;
+                } catch (EndOfFileException e) {
+                    // Ctrl+D: ignored.
+                    continue;
                 }
                 if (line.trim().isEmpty()) {
                     continue;
@@ -105,5 +107,9 @@ public class CodlyMain {
         } catch (IOException e) {
             System.err.println("Error: " + e.getMessage());
         }
+    }
+
+    private static void printBanner() {
+        System.out.print(Banner.text("v1.0.0"));
     }
 }

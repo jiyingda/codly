@@ -11,21 +11,26 @@ public class Banner {
     private static final String DIM   = "\033[2m";
     private static final String RESET = "\033[0m";
 
-    public static final String TEXT = BOLD + CYAN +
-        "   ██████╗ ██████╗ ██████╗ ██╗  ██╗   ██╗\n" +
-        "  ██╔════╝██╔═══██╗██╔══██╗██║  ╚██╗ ██╔╝\n" +
-        "  ██║     ██║   ██║██║  ██║██║   ╚████╔╝ \n" +
-        "  ██║     ██║   ██║██║  ██║██║    ╚██╔╝  \n" +
-        "  ╚██████╗╚██████╔╝██████╔╝███████╗██║   \n" +
-        "   ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝   \n" +
-        RESET +
-        GREEN +
-        "          /\\_____/\\                       \n" +
-        "         ( o\u0305 . o\u0305 )   " + RESET + BOLD + "Your AI Coding Companion" + RESET + GREEN + "\n" +
-        "          > ^ ^ <                         \n" +
-        "         /|     |\\                        \n" +
-        RESET +
-        DIM + "  ─────────────────────────────────────────\n" + RESET;
-
     private Banner() {}
+
+    /**
+     * 获取 Banner 文本
+     */
+    public static String text(String version) {
+        return BOLD + CYAN +
+            "   ██████╗ ██████╗ ██████╗ ██╗  ██╗   ██╗\n" +
+            "  ██╔════╝██╔═══██╗██╔══██╗██║  ╚██╗ ██╔╝\n" +
+            "  ██║     ██║   ██║██║  ██║██║   ╚████╔╝ \n" +
+            "  ██║     ██║   ██║██║  ██║██║    ╚██╔╝  \n" +
+            "  ╚██████╗╚██████╔╝██████╔╝███████╗██║   \n" +
+            "   ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝   \n" +
+            RESET +
+            GREEN +
+            "         /\\_____/\\                       \n" +
+            "         ( o . o )   " + RESET + BOLD + "Your AI Coding Companion" + RESET + GREEN + "\n" +
+            "          > ^ ^ <                         \n" +
+            "         /|     |\\                        \n" +
+            RESET +
+            DIM + "  ────────────────────────────────" + version + "──\n" + RESET;
+    }
 }
