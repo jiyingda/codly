@@ -1,6 +1,7 @@
 package com.jiyingda.codly.llm;
 
 import com.alibaba.fastjson.JSON;
+import com.jiyingda.codly.command.CommandContext;
 import com.jiyingda.codly.data.ChatRequest;
 import com.jiyingda.codly.data.FunctionCall;
 import com.jiyingda.codly.data.Message;
@@ -9,6 +10,8 @@ import com.jiyingda.codly.data.StreamDelta;
 import com.jiyingda.codly.data.StreamResponse;
 import com.jiyingda.codly.data.ToolCall;
 import com.jiyingda.codly.function.FunctionManager;
+import com.jiyingda.codly.prompt.SystemPrompt;
+import com.jiyingda.codly.util.HttpClientUtil;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -60,10 +63,11 @@ public class LlmClient {
         if (this.apiKey == null || this.apiKey.isBlank()) {
             throw new IllegalStateException("环境变量 DASHSCOPE_API_KEY 未设置");
         }
-        this.httpClient = new OkHttpClient();
+        this.httpClient = HttpClientUtil.createOptimizedHttpClient();
         this.functionManager = new FunctionManager();
         this.model = model;
     }
+
 
     public String getModel() {
         return model;
@@ -76,15 +80,19 @@ public class LlmClient {
     /**
      * 发起对话，流式内容通过 onToken 回调实时输出。
      *
-     * @param messages 对话历史
-     * @param onToken  每个流式 token 的回调，传入 null 则静默
+     * @param ctx     命令上下文
+     * @param onToken 每个流式 token 的回调，传入 null 则静默
      * @return 完整的模型回复文本
      */
-    public String chat(List<Message> messages, Consumer<String> onToken) {
-        return doChat(messages, onToken, 0);
+    public String chat(CommandContext ctx, Consumer<String> onToken) {
+        return doChat(ctx, ctx.getMemory(), onToken, 0);
     }
 
-    private String doChat(List<Message> messages, Consumer<String> onToken, int depth) {
+    public String chat(CommandContext ctx, List<Message> messages, Consumer<String> onToken) {
+        return doChat(ctx, messages, onToken, 0);
+    }
+
+    private String doChat(CommandContext ctx, List<Message> messages, Consumer<String> onToken, int depth) {
         if (depth >= MAX_TOOL_CALL_DEPTH) {
             System.err.println("[警告] tool_call 递归深度已达上限 " + MAX_TOOL_CALL_DEPTH + "，停止继续调用");
             return "";
@@ -93,10 +101,10 @@ public class LlmClient {
         ChatRequest chatRequest = new ChatRequest();
         chatRequest.setModel(model);
         chatRequest.setStream(true);
-        chatRequest.setTop_p(0.8);
-        chatRequest.setTemperature(0.7);
+        chatRequest.setTop_p(0.5);
+        chatRequest.setTemperature(0.5);
         chatRequest.setEnable_search(false);
-        chatRequest.setEnable_thinking(false);
+        chatRequest.setEnable_thinking(true);
         chatRequest.setThinking_budget(4000);
         chatRequest.setResult_format("message");
         chatRequest.setTools(functionManager.getTools());
@@ -212,7 +220,7 @@ public class LlmClient {
                         if (onToken != null) {
                             onToken.accept("\n[调用 " + functionName + " 工具，参数：" + args + "]\n");
                         }
-                        String result = functionManager.execute(functionName, args);
+                        String result = functionManager.execute(functionName, args, ctx);
                         if (onToken != null) {
                             onToken.accept("[" + functionName + " 结果：" + result + "]\n");
                         }
@@ -225,7 +233,7 @@ public class LlmClient {
                     }
                 }
                 if (anyExecuted) {
-                    return doChat(messages, onToken, depth + 1);
+                    return doChat(ctx, messages, onToken, depth + 1);
                 }
             }
 
@@ -246,7 +254,7 @@ public class LlmClient {
         Thread t = new Thread(() -> {
 
             List<Message> messages = List.of(
-                Message.fromSystem("你是一个标题生成助手，根据用户的消息生成一个简短的对话标题。要求：不超过10个字，不加引号，不加标点，只输出标题本身。"),
+                Message.fromSystem(SystemPrompt.GEN_TITLE_PROMPT),
                 Message.fromUser(userMessage)
             );
 

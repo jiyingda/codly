@@ -6,6 +6,7 @@
  */
 package com.jiyingda.codly.function;
 
+import com.jiyingda.codly.command.CommandContext;
 import com.jiyingda.codly.data.Tool;
 
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ public class FunctionManager {
      */
     public FunctionManager() {
         registerFunction(new ReadFileFunctionCall());
+        registerFunction(new WriteFileFunctionCall());
         registerFunction(new SearchFileFunctionCall());
         registerFunction(new ExecBashFunctionCall());
         for (FunctionCallApi functionCall : functions.values()) {
@@ -75,12 +77,12 @@ public class FunctionManager {
      * @param argsJson     函数参数（JSON 格式）
      * @return 执行结果
      */
-    public String execute(String functionName, String argsJson) {
+    public String execute(String functionName, String argsJson, CommandContext ctx) {
         FunctionCallApi functionCallApi = getFunction(functionName);
         if (functionCallApi == null) {
             return "未知的函数：" + functionName;
         }
-        return functionCallApi.execute(argsJson);
+        return functionCallApi.execute(argsJson, ctx);
     }
 
     /**
@@ -92,4 +94,3 @@ public class FunctionManager {
         return new HashMap<>(functions);
     }
 }
-

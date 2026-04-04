@@ -7,6 +7,7 @@
 package com.jiyingda.codly.function;
 
 import com.alibaba.fastjson.JSON;
+import com.jiyingda.codly.command.CommandContext;
 import com.jiyingda.codly.data.Parameters;
 import com.jiyingda.codly.data.Property;
 
@@ -48,7 +49,7 @@ public class ExecBashFunctionCall implements FunctionCallApi {
 
     @Override
     @SuppressWarnings("unchecked")
-    public String execute(String argsJson) {
+    public String execute(String argsJson, CommandContext ctx) {
         try {
             Map<String, Object> args = JSON.parseObject(argsJson, Map.class);
             String command = (String) args.get("command");
@@ -80,4 +81,3 @@ public class ExecBashFunctionCall implements FunctionCallApi {
         }
     }
 }
-

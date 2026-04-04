@@ -11,6 +11,7 @@ import picocli.CommandLine.Command;
     QuitCommand.class,
     ExitCommand.class,
     ClearCommand.class,
+    CompactCommand.class,
     HelpCommand.class,
     ModelCommand.class
 })
@@ -73,6 +74,7 @@ public class CommandDispatcher implements Runnable {
             可用命令：
               /help   显示帮助信息
               /clear  清空对话历史
+              /compact 压缩对话历史，保留总结
               /model  列出并切换模型
               /quit (/exit)   退出程序""";
     }

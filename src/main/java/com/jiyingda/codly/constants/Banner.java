@@ -1,4 +1,4 @@
-package com.jiyingda.codly.prompt;
+package com.jiyingda.codly.constants;
 
 /**
  * Codly 启动 Banner

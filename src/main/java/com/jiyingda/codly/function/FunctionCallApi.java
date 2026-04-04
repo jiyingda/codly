@@ -6,6 +6,7 @@
  */
 package com.jiyingda.codly.function;
 
+import com.jiyingda.codly.command.CommandContext;
 import com.jiyingda.codly.data.Parameters;
 
 /**
@@ -42,8 +43,7 @@ public interface FunctionCallApi {
      * @param argsJson 函数参数（JSON 格式）
      * @return 执行结果
      */
-    String execute(String argsJson);
+    String execute(String argsJson, CommandContext ctx);
 }
-
 
 
