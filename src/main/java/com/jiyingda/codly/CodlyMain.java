@@ -34,7 +34,6 @@ import java.util.List;
  */
 public class CodlyMain {
 
-    private static final String PROMPT = "> ";
     private static final String TITLE_ESCAPE_PREFIX = "\033]0;Codly — ";
     private static final String TITLE_ESCAPE_SUFFIX = "\007";
 
@@ -69,13 +68,11 @@ public class CodlyMain {
             while (true) {
                 String line;
                 try {
-                    line = reader.readLine(PROMPT);
+                    line = reader.readLine("> ");
                 } catch (UserInterruptException e) {
-                    // Ctrl+C: exit REPL.
                     System.out.println();
                     break;
                 } catch (EndOfFileException e) {
-                    // Ctrl+D: ignored.
                     continue;
                 }
                 if (line.trim().isEmpty()) {
