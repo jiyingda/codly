@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * 从 ~/.codly/settings.json 读取配置的类
@@ -167,5 +168,27 @@ public class Config {
      */
     public static String getConfigPath() {
         return CONFIG_PATH;
+    }
+
+    public static void printLoadErr(Config config, Consumer<String> out) {
+        out.accept("");
+        out.accept("  错误：" + config.getLoadError());
+        out.accept("  请创建配置文件：" + Config.getConfigPath());
+        out.accept("");
+        out.accept("  配置文件格式:");
+        out.accept("  {");
+        out.accept("    \"apiKey\": \"your-api-key-here\",");
+        out.accept("    \"enableThinking\": true,");
+        out.accept("    \"defaultModel\": \"qwen3.5-plus\",");
+        out.accept("    \"availableModels\": [...]");
+        out.accept("  }");
+        out.accept("");
+    }
+
+    public static void printLlmConfigErr(ConfigException e, Consumer<String> out) {
+        out.accept("");
+        out.accept("  错误：" + e.getMessage());
+        out.accept("  请检查配置文件：" + Config.getConfigPath());
+        out.accept("");
     }
 }

@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codly - AI 编程助手</title>
+    <style>
+        :root {
+            --primary: #00d9ff;
+            --primary-dark: #00a8cc;
+            --bg-dark: #0a0a0f;
+            --bg-card: #12121a;
+            --text-primary: #ffffff;
+            --text-secondary: #6b7280;
+            --border: #1f2937;
+            --code-bg: #0d1117;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            overflow-x: hidden;
+            width: 100%;
+        }
+
+        body {
+            font-family: "SF Mono", "Monaco", "Consolas", monospace;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        /* Grid Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(0, 217, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 217, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(10, 10, 15, 0.95);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .nav-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--primary);
+            text-decoration: none;
+            letter-spacing: 2px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 24px;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 100px 20px 60px;
+            position: relative;
+            width: 100%;
+        }
+
+        .hero::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(0, 217, 255, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .ascii-logo {
+            font-size: 16px;
+            line-height: 1.1;
+            color: #00d9ff;
+            font-weight: 700;
+            text-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+            white-space: pre;
+            text-align: left;
+            display: inline-block;
+            margin-bottom: 24px;
+            overflow-x: auto;
+            max-width: 100%;
+        }
+
+        .tagline {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 32px;
+            letter-spacing: 1px;
+        }
+
+        .tagline span {
+            color: var(--primary);
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 32px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-weight: 500;
+            font-size: 12px;
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: var(--bg-dark);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--primary);
+            background: rgba(0, 217, 255, 0.1);
+        }
+
+        .code-display {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 12px;
+            font-family: "SF Mono", "Monaco", monospace;
+            font-size: 11px;
+            display: inline-block;
+            max-width: 100%;
+        }
+
+        .code-display .prompt {
+            color: var(--primary);
+            margin-right: 10px;
+        }
+
+        .code-display .command {
+            color: var(--text-secondary);
+        }
+
+        /* Download Section */
+        .download {
+            padding: 80px 20px;
+            max-width: 700px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .section-title h2 {
+            font-size: 18px;
+            margin-bottom: 6px;
+            color: var(--text-primary);
+            letter-spacing: 4px;
+        }
+
+        .section-title p {
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .download-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 14px;
+        }
+
+        .download-item h3 {
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: var(--primary);
+        }
+
+        .download-item p {
+            color: var(--text-secondary);
+            font-size: 12px;
+            margin-bottom: 12px;
+        }
+
+        .download-item > div {
+            display: flex;
+            align-items: center;
+        }
+
+        .code-block {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 12px;
+            font-family: "SF Mono", "Monaco", monospace;
+            font-size: 11px;
+            margin-bottom: 0;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        .code-block code {
+            color: var(--text-secondary);
+        }
+
+        .code-block .command {
+            color: var(--primary);
+        }
+
+        .copy-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 12px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.3s;
+            font-family: inherit;
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+
+        .copy-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* GitHub Section */
+        .github {
+            padding: 80px 20px;
+            text-align: center;
+        }
+
+        .github-card {
+            max-width: 400px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 32px;
+        }
+
+        .github-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 16px;
+            color: var(--text-primary);
+        }
+
+        .github-card h2 {
+            font-size: 16px;
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+        }
+
+        .github-card p {
+            color: var(--text-secondary);
+            font-size: 12px;
+            margin-bottom: 18px;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 28px 20px;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 11px;
+            transition: color 0.3s;
+        }
+
+        .footer-links a:hover {
+            color: var(--primary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero {
+                padding: 80px 12px 40px;
+            }
+
+            .ascii-logo {
+                font-size: 10px;
+            }
+
+            .tagline {
+                font-size: 12px;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .btn {
+                width: 100%;
+                max-width: 180px;
+                justify-content: center;
+            }
+
+            .download, .github {
+                padding: 60px 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-container">
+            <a href="#" class="logo">&lt;Codly /&gt;</a>
+            <div class="nav-links">
+                <a href="#download">Download</a>
+                <a href="https://github.com/jiyingda/codly" target="_blank">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <pre class="ascii-logo">   
+    ██████╗ ██████╗ ██████╗  ██╗  ██╗   ██╗
+  ██╔══╝██╔══██╗██╔═██╗██║  ╚██╗ ██╔╝
+  ██║     ██║   ██║██║  ██║██║   ╚████╔╝ 
+  ██║     ██║   ██║██║  ██║██║    ╚██╔╝  
+  ╚██████╗╚██████╔╝██████╔╝███████╗██║   
+   ╚═══╝ ╚═══╝ ╚═══╝ ╚═══╝╚═╝   
+         /\_____/\                       
+         ( o . o )   Your AI Coding Companion
+          > ^ ^ <                         
+         /|     |\                        
+        </pre>
+        <p class="tagline">AI-Powered <span>Programming</span> Assistant</p>
+        <div class="hero-buttons">
+            <a href="#download" class="btn btn-primary">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </svg>
+                Download
+            </a>
+            <a href="https://github.com/jiyingda/codly" target="_blank" class="btn btn-secondary">
+                <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                Source
+            </a>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="code-display">
+                <span class="prompt">$</span><span class="command">curl -fsSL http://codly.jiyingda.com/install.sh | bash</span>
+            </div>
+            <button class="copy-btn" onclick="copyCodeFromDisplay(this)">Copy</button>
+        </div>
+    </section>
+
+    <!-- Download Section -->
+    <section id="download" class="download">
+        <div class="section-title">
+            <h2>INSTALL</h2>
+            <p>Choose your installation method</p>
+        </div>
+
+        <div class="download-item">
+            <h3>Shell Script</h3>
+            <p>One-line installation</p>
+            <div>
+                <div class="code-block">
+                    <code><span class="command">curl</span> -fsSL http://codly.jiyingda.com/install.sh | <span class="command">bash</span></code>
+                </div>
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+        </div>
+
+        <div class="download-item">
+            <h3>Usage</h3>
+            <p>Run after installation</p>
+            <div>
+                <div class="code-block">
+                    <code><span class="command">codly</span></code>
+                </div>
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 Codly</p>
+        <div class="footer-links">
+            <a href="#download">Download</a>
+            <a href="https://github.com/jiyingda/codly">GitHub</a>
+            <a href="https://github.com/jiyingda/codly" target="_blank">Docs</a>
+        </div>
+    </footer>
+
+    <script>
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+
+        function copyCode(btn) {
+            const code = btn.previousElementSibling.querySelector('code').innerText;
+            navigator.clipboard.writeText(code).then(() => {
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.textContent = 'Copy';
+                }, 2000);
+            });
+        }
+
+        function copyCodeFromDisplay(btn) {
+            const codeDisplay = btn.previousElementSibling;
+            const commandSpan = codeDisplay.querySelector('.command');
+            if (!commandSpan) return;
+
+            const code = commandSpan.textContent;
+
+            // 使用 Clipboard API 或降级方案
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(code).then(() => {
+                    btn.textContent = 'Copied!';
+                    setTimeout(() => {
+                        btn.textContent = 'Copy';
+                    }, 2000);
+                });
+            } else {
+                // 降级方案：使用 textarea
+                const textarea = document.createElement('textarea');
+                textarea.value = code;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    btn.textContent = 'Copied!';
+                    setTimeout(() => {
+                        btn.textContent = 'Copy';
+                    }, 2000);
+                } catch (e) {
+                    console.error('Copy failed:', e);
+                }
+                document.body.removeChild(textarea);
+            }
+        }
+    </script>
+</body>
+</html>

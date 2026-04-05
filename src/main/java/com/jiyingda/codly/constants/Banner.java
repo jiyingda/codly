@@ -14,7 +14,7 @@ public class Banner {
     private Banner() {}
 
     /**
-     * 获取 Banner 文本
+     * 获取 Banner 文本 codly + 猫头鹰
      */
     public static String text(String version) {
         return BOLD + CYAN +

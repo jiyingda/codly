@@ -3,6 +3,7 @@ package com.jiyingda.codly.command;
 import com.jiyingda.codly.data.Message;
 import com.jiyingda.codly.llm.LlmProvider;
 import com.jiyingda.codly.prompt.SystemPrompt;
+import org.jline.terminal.Terminal;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -15,6 +16,7 @@ public class CommandContext {
     private final List<Message> memory;
     private final LlmProvider llmClient;
     private final Path startupPath;
+    private Terminal terminal;
 
     public CommandContext(List<Message> memory, LlmProvider llmClient, Path startupPath) {
         this.memory = memory;
@@ -32,6 +34,14 @@ public class CommandContext {
 
     public Path getStartupPath() {
         return startupPath;
+    }
+
+    public Terminal getTerminal() {
+        return terminal;
+    }
+
+    public void setTerminal(Terminal terminal) {
+        this.terminal = terminal;
     }
 
     public void resetMemory() {

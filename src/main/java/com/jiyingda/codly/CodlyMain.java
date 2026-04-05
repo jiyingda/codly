@@ -48,18 +48,7 @@ public class CodlyMain {
         Config config = Config.getInstance();
         if (!config.isConfigLoaded()) {
             printBanner();
-            System.err.println();
-            System.err.println("  错误：" + config.getLoadError());
-            System.err.println("  请创建配置文件：" + Config.getConfigPath());
-            System.err.println();
-            System.err.println("  配置文件格式:");
-            System.err.println("  {");
-            System.err.println("    \"apiKey\": \"your-api-key-here\",");
-            System.err.println("    \"enableThinking\": true,");
-            System.err.println("    \"defaultModel\": \"qwen3.5-plus\",");
-            System.err.println("    \"availableModels\": [...]");
-            System.err.println("  }");
-            System.err.println();
+            Config.printLoadErr(config, System.err::println);
             return;
         }
 
@@ -68,10 +57,7 @@ public class CodlyMain {
             llmClient = LlmClient.create();
         } catch (ConfigException e) {
             printBanner();
-            System.err.println();
-            System.err.println("  错误：" + e.getMessage());
-            System.err.println("  请检查配置文件：" + Config.getConfigPath());
-            System.err.println();
+            Config.printLlmConfigErr(e, System.err::println);
             return;
         }
 
@@ -86,11 +72,8 @@ public class CodlyMain {
         printBanner();
         System.out.println("  输入对话内容开始编程，/help 查看可用命令");
 
-        try (Terminal terminal = TerminalBuilder.builder()
-                .system(true)
-                .jna(true)
-                .dumb(true)
-                .build()) {
+        try (Terminal terminal = createTerminal()) {
+            ctx.setTerminal(terminal);
 
             LineReader reader = LineReaderBuilder.builder()
                     .terminal(terminal)
@@ -141,5 +124,54 @@ public class CodlyMain {
 
     private static void printBanner() {
         System.out.print(Banner.text("v1.0.0"));
+    }
+
+    private static Terminal createTerminal() throws IOException {
+        boolean loggedEnv = false;
+        try {
+            return TerminalBuilder.builder()
+                    .system(true)
+                    .jna(true)
+                    .dumb(false)
+                    .build();
+        } catch (Exception e) {
+            if (!loggedEnv) {
+                System.err.println("[terminal] 创建终端失败，进入回退流程。"
+                        + terminalDebugContext());
+                loggedEnv = true;
+            }
+            logTerminalFailure("system=true,jna=true,dumb=false", e);
+        }
+
+        try {
+            return TerminalBuilder.builder()
+                    .system(true)
+                    .jna(false)
+                    .dumb(false)
+                    .build();
+        } catch (Exception e) {
+            logTerminalFailure("system=true,jna=false,dumb=false", e);
+        }
+
+        try {
+            return TerminalBuilder.builder()
+                    .system(true)
+                    .dumb(true)
+                    .build();
+        } catch (Exception e) {
+            logTerminalFailure("system=true,dumb=true", e);
+            throw new IOException("Unable to create a terminal", e);
+        }
+    }
+
+    private static void logTerminalFailure(String stage, Exception e) {
+        System.err.println("[terminal] 阶段失败: " + stage
+                + " | " + e.getClass().getSimpleName() + ": " + e.getMessage());
+    }
+
+    private static String terminalDebugContext() {
+        return " TERM=" + System.getenv("TERM")
+                + ", COLORTERM=" + System.getenv("COLORTERM")
+                + ", console=" + (System.console() != null);
     }
 }

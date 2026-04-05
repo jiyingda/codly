@@ -2,6 +2,24 @@
 
 Codly 是一个终端里的 AI 编程助手（CLI），支持对话式编程和工具调用。
 
+🌐 官网：[http://codly.jiyingda.com](http://codly.jiyingda.com)
+
+## Banner
+
+```
+   ██████╗ ██████╗ ██████╗ ██╗  ██╗   ██╗
+  ██╔════╝██╔═══██╗██╔══██╗██║  ╚██╗ ██╔╝
+  ██║     ██║   ██║██║  ██║██║   ╚████╔╝ 
+  ██║     ██║   ██║██║  ██║██║    ╚██╔╝  
+  ╚██████╗╚██████╔╝██████╔╝███████╗██║   
+   ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝   
+         /\_____\
+         ( o . o )   Your AI Coding Companion
+          > ^ ^ <
+         /|     |\
+  ────────────────────────────────v1.0.0──
+```
+
 ## 快速开始
 
 ### 1. 环境要求
@@ -29,7 +47,7 @@ java -jar target/codly-1.0-SNAPSHOT.jar
 启动后直接输入自然语言即可：
 ```text
 > 帮我搜索当前目录下所有 .java 文件
-> 读取 src/main/java/com/jiyingda/codly/CodlyMain.java
+> 读取 Example.java
 > 把 README 追加一行“测试内容”
 ```
 
@@ -70,7 +88,6 @@ java -jar target/codly-1.0-SNAPSHOT.jar
 ```bash
 export DASHSCOPE_API_KEY=your_api_key
 ```
-
 ## 许可证
 
 Copyright 2026 chapaof.com. All rights reserved.

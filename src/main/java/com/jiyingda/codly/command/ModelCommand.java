@@ -12,7 +12,12 @@ public class ModelCommand implements Runnable, CliCommand {
 
     @Override
     public boolean execute(CommandContext ctx) {
-        String chosen = ModelSelector.select(LlmClient.getAvailableModels(), ctx.getLlmClient().getModel());
+        String chosen;
+        if (ctx.getTerminal() != null) {
+            chosen = ModelSelector.select(LlmClient.getAvailableModels(), ctx.getLlmClient().getModel(), ctx.getTerminal());
+        } else {
+            chosen = ModelSelector.select(LlmClient.getAvailableModels(), ctx.getLlmClient().getModel());
+        }
         if (chosen != null) {
             ctx.getLlmClient().setModel(chosen);
         }
