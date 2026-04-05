@@ -15,6 +15,7 @@ const MIME_TYPES = {
     '.gif': 'image/gif',
     '.webp': 'image/webp',
     '.ico': 'image/x-icon',
+    '.svg': 'image/svg+xml',
     '.jar': 'application/java-archive',
     '.sh': 'application/x-sh'
 };
