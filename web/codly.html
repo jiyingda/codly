@@ -416,7 +416,7 @@
   ██║     ██║   ██║██║  ██║██║   ╚████╔╝ 
   ██║     ██║   ██║██║  ██║██║    ╚██╔╝  
   ╚██████╗╚██████╔╝██████╔╝███████╗██║   
-   ╚═══╝ ╚═══╝ ╚═══╝ ╚═══╝╚═╝   
+   ╚═══╝ ╚═══╝ ╚═══╝ ╚═══╝╚═╝
          /\_____/\                       
          ( o . o )   Your AI Coding Companion
           > ^ ^ <                         
@@ -449,7 +449,15 @@
     <section id="download" class="download">
         <div class="section-title">
             <h2>INSTALL</h2>
-            <p>Choose your installation method</p>
+        </div>
+
+        <div class="download-item">
+            <h3>Requirements</h3>
+            <p style="margin-top: 10px;">
+                <strong>Java:</strong> 17 or higher<br>
+                <strong>Maven:</strong> 3.6+ (for building from source)<br>
+                <strong>OS:</strong> macOS, Linux, WSL
+            </p>
         </div>
 
         <div class="download-item">
@@ -475,13 +483,58 @@
         </div>
     </section>
 
+    <!-- Disclaimer Section -->
+    <section class="download" style="border-top: 1px solid var(--border);">
+        <div class="section-title">
+            <h2 style="color: #f59e0b;">免责声明</h2>
+            <p>请在使用前仔细阅读</p>
+        </div>
+
+        <div class="download-item" style="border-color: rgba(245, 158, 11, 0.3);">
+            <h3 style="color: #f59e0b;">⚠️ 安全警告</h3>
+            <p style="color: var(--text-secondary); line-height: 1.8;">
+                <strong>Shell 命令执行：</strong>Codly 可通过 <code>exec_bash</code> 执行 bash 命令。
+                该功能可能运行会对系统造成风险的命令：<br><br>
+                • 修改或删除系统文件<br>
+                • 更改系统配置<br>
+                • 安装或卸载软件包<br>
+                • 访问敏感数据<br><br>
+                <strong>请务必在批准前审查建议的命令。</strong> 使用风险自负。
+            </p>
+        </div>
+
+        <div class="download-item" style="border-color: rgba(245, 158, 11, 0.3);">
+            <h3 style="color: #f59e0b;">⚠️ API Key 安全</h3>
+            <p style="color: var(--text-secondary); line-height: 1.8;">
+                <strong>保护您的凭证：</strong>API Key 存储在 <code>~/.codly/settings.json</code> 中。
+                请确保：<br><br>
+                • 切勿将此文件提交到版本控制系统<br>
+                • 将 <code>~/.codly/</code> 添加到全局 <code>.gitignore</code><br>
+                • 保密您的 API Key<br>
+                • 定期检查 API 使用情况
+            </p>
+        </div>
+
+        <div class="download-item" style="border-color: rgba(245, 158, 11, 0.3);">
+            <h3 style="color: #f59e0b;">⚠️ AI 生成代码</h3>
+            <p style="color: var(--text-secondary); line-height: 1.8;">
+                <strong>需要代码审查：</strong>Codly 使用 AI 生成代码和建议。
+                请始终：<br><br>
+                • 在使用前审查生成的代码<br>
+                • 在安全环境中充分测试<br>
+                • 未经审计不要将 AI 生成代码用于关键系统<br>
+                • 注意潜在的安全漏洞
+            </p>
+        </div>
+    </section>
+
     <!-- Footer -->
     <footer>
         <p>&copy; 2026 Codly</p>
         <div class="footer-links">
-            <a href="#download">Download</a>
+            <a href="#download">下载</a>
             <a href="https://github.com/jiyingda/codly">GitHub</a>
-            <a href="https://github.com/jiyingda/codly" target="_blank">Docs</a>
+            <a href="https://github.com/jiyingda/codly" target="_blank">文档</a>
         </div>
     </footer>
 
