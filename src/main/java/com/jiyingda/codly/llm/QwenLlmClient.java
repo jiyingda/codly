@@ -20,6 +20,8 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -35,6 +37,7 @@ import java.util.function.Consumer;
  */
 public class QwenLlmClient implements LlmProvider {
 
+    private static final Logger logger = LoggerFactory.getLogger(QwenLlmClient.class);
     private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
     private static final int MAX_TOOL_CALL_DEPTH = 10;
 
@@ -102,7 +105,7 @@ public class QwenLlmClient implements LlmProvider {
 
     private String doChat(CommandContext ctx, List<Message> messages, Consumer<String> onToken, int depth) {
         if (depth >= MAX_TOOL_CALL_DEPTH) {
-            System.err.println("[警告] tool_call 递归深度已达上限 " + MAX_TOOL_CALL_DEPTH + "，停止继续调用");
+            logger.error("tool_call 递归深度已达上限 {}", MAX_TOOL_CALL_DEPTH);
             return "";
         }
 
@@ -133,7 +136,7 @@ public class QwenLlmClient implements LlmProvider {
 
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
-                System.err.println("请求失败：" + response.code() + " - " + response.message());
+                logger.error("请求失败：{} - {}", response.code(), response.message());
                 return "";
             }
 
@@ -246,7 +249,7 @@ public class QwenLlmClient implements LlmProvider {
             }
 
         } catch (IOException e) {
-            System.err.println("请求失败：" + e.getMessage());
+            logger.error("请求失败：{}", e.getMessage(), e);
         }
 
         return fullContent.toString();
@@ -255,6 +258,7 @@ public class QwenLlmClient implements LlmProvider {
     @Override
     public void generateTitleAsync(String userMessage, Consumer<String> onTitle) {
         Thread t = new Thread(() -> {
+            logger.debug("开始生成标题");
 
             List<Message> messages = List.of(
                 Message.fromSystem(SystemPrompt.GEN_TITLE_PROMPT),
@@ -278,7 +282,10 @@ public class QwenLlmClient implements LlmProvider {
                 .build();
 
             try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful() || response.body() == null) return;
+                if (!response.isSuccessful() || response.body() == null) {
+                    logger.error("请求失败：{}", response.code());
+                    return;
+                }
                 String body = response.body().string();
                 com.alibaba.fastjson.JSONObject json = JSON.parseObject(body);
                 String title = json
@@ -286,10 +293,13 @@ public class QwenLlmClient implements LlmProvider {
                     .getJSONObject(0)
                     .getJSONObject("message")
                     .getString("content");
+                logger.debug("生成标题：{}", title);
                 if (title != null && !title.isBlank()) {
                     onTitle.accept(title.trim());
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.error("生成标题异常：{}", e.getMessage(), e);
+            }
         });
         t.setDaemon(true);
         t.start();

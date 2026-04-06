@@ -1,6 +1,9 @@
 package com.jiyingda.codly.command;
 
 import com.jiyingda.codly.data.Message;
+import com.jiyingda.codly.prompt.SystemPrompt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import picocli.CommandLine.Command;
 
 import java.util.List;
@@ -9,22 +12,14 @@ import java.util.stream.Collectors;
 @Command(name = "/compact", description = "Compact conversation history")
 public class CompactCommand implements CliCommand {
 
-    private static final String DEFAULT_SUMMARIZE_PROMPT = """
-        Please summarize the above conversation in 2-3 sentences. \
-        Focus on:
-        1. The main task or problem being worked on
-        2. Key decisions or solutions discussed
-        3. Current status or next steps
-
-        Provide only the summary, no other commentary.
-        """;
+    private static final Logger logger = LoggerFactory.getLogger(CompactCommand.class);
 
     @Override
     public boolean execute(CommandContext ctx) {
         List<Message> memory = ctx.getMemory();
 
         if (memory.size() <= 1) {
-            System.out.println("对话历史为空，无需压缩");
+            logger.info("对话历史为空，无需压缩");
             return false;
         }
 
@@ -35,26 +30,23 @@ public class CompactCommand implements CliCommand {
             .collect(Collectors.joining("\n\n"));
 
         if (conversation.isBlank()) {
-            System.out.println("对话历史为空，无需压缩");
+            logger.info("对话历史为空，无需压缩");
             return false;
         }
 
-        System.out.println("正在总结对话历史...");
+        logger.info("正在总结对话历史...");
 
         // 构建总结请求
         List<Message> summarizeMessages = List.of(
-            Message.fromSystem("You are a helpful assistant that summarizes conversations."),
-            Message.fromUser(conversation + "\n\n" + DEFAULT_SUMMARIZE_PROMPT)
+            Message.fromSystem(SystemPrompt.GEN_SUMMARY_PROMPT),
+            Message.fromUser(conversation + "\n\n" + SystemPrompt.DEFAULT_SUMMARIZE_PROMPT)
         );
 
         // 同步调用 LLM 进行总结
         StringBuilder summary = new StringBuilder();
         ctx.getLlmClient().chat(ctx, summarizeMessages, summary::append);
 
-        System.out.println("总结完成:");
-        System.out.println("---");
-        System.out.println(summary.toString());
-        System.out.println("---");
+        logger.info("总结完成：{}", summary.toString());
 
         // 保留系统提示和总结，清空其他对话
         Message systemMessage = memory.get(0);
@@ -62,7 +54,8 @@ public class CompactCommand implements CliCommand {
         memory.add(systemMessage);
         memory.add(Message.fromUser("[Previous conversation summarized]: " + summary.toString()));
 
-        System.out.println("对话历史已压缩，保留了总结内容");
+        logger.info("对话历史已压缩，保留了总结内容");
+        System.out.println("[压缩完成] " + summary.toString());
         return false;
     }
 }

@@ -1,9 +1,12 @@
 package com.jiyingda.codly.util;
 
+import com.jiyingda.codly.llm.QwenLlmClient;
 import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -13,6 +16,8 @@ import java.util.concurrent.TimeUnit;
  * 包含超时配置、日志记录和自动重试功能。
  */
 public class HttpClientUtil {
+
+    private static final Logger logger = LoggerFactory.getLogger(HttpClientUtil.class);
 
     /**
      * 创建优化的 OkHttpClient，包含超时、重试和异常处理配置
@@ -48,13 +53,11 @@ public class HttpClientUtil {
             try {
                 Response response = chain.proceed(request);
                 long duration = System.currentTimeMillis() - startTime;
-                System.err.println("[LLM] " + request.method() + " " + request.url()
-                        + " - 状态码: " + response.code() + " (耗时: " + duration + "ms)");
+                logger.info("[LLM] {} {} - 状态码: {} (耗时: {}ms)", request.method(), request.url(), response.code(), duration);
                 return response;
             } catch (IOException e) {
                 long duration = System.currentTimeMillis() - startTime;
-                System.err.println("[LLM] " + request.method() + " " + request.url()
-                        + " - 失败 (耗时: " + duration + "ms): " + e.getMessage());
+                logger.error("[LLM] {} {} - 失败 (耗时: {}ms): {}", request.method(), request.url(), duration, e.getMessage());
                 throw e;
             }
         }
@@ -81,7 +84,7 @@ public class HttpClientUtil {
                 } catch (IOException e) {
                     lastException = e;
                     if (i < maxRetry) {
-                        System.err.println("[重试] 第 " + (i + 1) + " 次重试 - " + e.getMessage());
+                        logger.info("[重试] 第 {} 次重试 - {}", i + 1, e.getMessage());
                         try {
                             // 指数退避：1秒、2秒、4秒...
                             long delayMs = 1000L * (long) Math.pow(2, i);
@@ -94,7 +97,7 @@ public class HttpClientUtil {
                 }
             }
 
-            System.err.println("[LLM] 已达最大重试次数 " + maxRetry + "，放弃重试");
+            logger.error("[LLM] 已达最大重试次数 {}，放弃重试", maxRetry);
             throw lastException;
         }
     }
