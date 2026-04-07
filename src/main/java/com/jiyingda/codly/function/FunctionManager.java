@@ -30,7 +30,10 @@ public class FunctionManager {
     public FunctionManager() {
         registerFunction(new ReadFileFunctionCall());
         registerFunction(new WriteFileFunctionCall());
+        registerFunction(new EditFileFunctionCall());
         registerFunction(new SearchFileFunctionCall());
+        registerFunction(new GrepFunctionCall());
+        registerFunction(new ListDirectoryFunctionCall());
         registerFunction(new ExecBashFunctionCall());
         for (FunctionCallApi functionCall : functions.values()) {
             tools.add(Tool.createFunction(functionCall));
