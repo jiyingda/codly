@@ -19,6 +19,7 @@ public class Config {
     private static final String CONFIG_EXAMPLE_PATH = CONFIG_PATH + ".example";
 
     private String apiKey;
+    private String iqsApiKey;
     private Boolean enableThinking;
     private String defaultModel;
     private List<String> availableModels;
@@ -55,6 +56,7 @@ public class Config {
             JSONObject json = JSON.parseObject(content);
             if (json != null) {
                 this.apiKey = json.getString("apiKey");
+                this.iqsApiKey = json.getString("iqsApiKey");
                 this.enableThinking = json.getBoolean("enableThinking");
                 this.defaultModel = json.getString("defaultModel");
                 this.availableModels = json.getJSONArray("availableModels")
@@ -87,6 +89,10 @@ public class Config {
         return apiKey;
     }
 
+    public String getIqsApiKey() {
+        return iqsApiKey;
+    }
+
     public Boolean getEnableThinking() {
         return enableThinking;
     }
@@ -113,6 +119,18 @@ public class Config {
             return null;
         }
         return apiKey;
+    }
+
+    /**
+     * 获取通义搜索 API Key
+     */
+    public static String getIqsApiKeySafe() {
+        Config config = getInstance();
+        String key = config.getIqsApiKey();
+        if (key == null || key.isBlank()) {
+            return null;
+        }
+        return key;
     }
 
     /**
@@ -146,7 +164,7 @@ public class Config {
         Config config = getInstance();
         Boolean enableThinking = config.getEnableThinking();
         if (enableThinking == null) {
-            enableThinking = true;
+            enableThinking = false;
         }
         return enableThinking;
     }

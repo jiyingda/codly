@@ -13,7 +13,7 @@ import picocli.CommandLine.Command;
     ClearCommand.class,
     CompactCommand.class,
     HelpCommand.class,
-    ModelCommand.class
+    ModelCommand.class,
 })
 public class CommandDispatcher implements Runnable {
 
@@ -76,6 +76,7 @@ public class CommandDispatcher implements Runnable {
               /clear  清空对话历史
               /compact 压缩对话历史，保留总结
               /model  列出并切换模型
-              /quit (/exit)   退出程序""";
+              /quit (/exit)   退出程序
+              /sysinfo 显示系统与环境信息""";
     }
 }

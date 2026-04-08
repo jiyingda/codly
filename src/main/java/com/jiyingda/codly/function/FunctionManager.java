@@ -35,6 +35,8 @@ public class FunctionManager {
         registerFunction(new GrepFunctionCall());
         registerFunction(new ListDirectoryFunctionCall());
         registerFunction(new ExecBashFunctionCall());
+        registerFunction(new SystemInfoFunctionCall());
+        registerFunction(new WebSearchFunctionCall());
         for (FunctionCallApi functionCall : functions.values()) {
             tools.add(Tool.createFunction(functionCall));
         }

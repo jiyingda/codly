@@ -74,8 +74,11 @@ public class ExecBashFunctionCall implements FunctionCallApi {
                 return "命令执行超时（超过 30 秒）";
             }
             int exitCode = process.exitValue();
-
-            return "执行结果:\n" + output + "(退出码：" + exitCode + ")";
+            if (exitCode == 0) {
+                return "执行成功:\n" + output;
+            } else {
+                return "执行失败，退出码 " + exitCode + ":\n" + output;
+            }
         } catch (Exception e) {
             return "执行 execBash 失败：" + e.getMessage();
         }

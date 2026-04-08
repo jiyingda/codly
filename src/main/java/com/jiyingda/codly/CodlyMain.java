@@ -16,6 +16,7 @@ import com.jiyingda.codly.config.Config;
 import com.jiyingda.codly.config.ConfigException;
 import com.jiyingda.codly.constants.Banner;
 import com.jiyingda.codly.memory.MemoryManager;
+import com.jiyingda.codly.systeminfo.SystemInfoManager;
 import com.jiyingda.codly.prompt.SystemPrompt;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
@@ -70,7 +71,7 @@ public class CodlyMain {
         }
 
         List<Message> memory = new ArrayList<>();
-        memory.add(Message.fromSystem(SystemPrompt.SOUL_PROMPT));
+        memory.add(Message.fromSystem(SystemPrompt.SOUL_PROMPT + "\n\n" +  SystemInfoManager.getInstance().currentTime()));
 
         // 初始化 MemoryManager
         MemoryManager memoryManager = MemoryManager.getInstance();
@@ -85,6 +86,7 @@ public class CodlyMain {
 
         try (Terminal terminal = createTerminal()) {
             ctx.setTerminal(terminal);
+            SystemInfoManager.getInstance().setTerminal(terminal);
 
             LineReader reader = LineReaderBuilder.builder()
                     .terminal(terminal)

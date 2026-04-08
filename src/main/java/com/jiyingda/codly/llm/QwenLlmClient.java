@@ -90,12 +90,12 @@ public class QwenLlmClient implements LlmProvider {
 
     @Override
     public String chat(CommandContext ctx, Consumer<String> onToken) {
-        return doChat(ctx, ctx.getMemory(), onToken, 0);
+        return doChat(ctx, ctx.getMemory(), onToken);
     }
 
     @Override
     public String chat(CommandContext ctx, List<Message> messages, Consumer<String> onToken) {
-        return doChat(ctx, messages, onToken, 0);
+        return doChat(ctx, messages, onToken);
     }
 
     @Override
@@ -103,156 +103,171 @@ public class QwenLlmClient implements LlmProvider {
         return Config.getAvailableModelsSafe();
     }
 
-    private String doChat(CommandContext ctx, List<Message> messages, Consumer<String> onToken, int depth) {
-        if (depth >= MAX_TOOL_CALL_DEPTH) {
-            logger.error("tool_call 递归深度已达上限 {}", MAX_TOOL_CALL_DEPTH);
-            return "";
+    private String doChat(CommandContext ctx, List<Message> messages, Consumer<String> onToken) {
+        StringBuilder totalContent = new StringBuilder();
+        int depth = 0;
+
+        while (depth < MAX_TOOL_CALL_DEPTH) {
+            ChatRequest chatRequest = new ChatRequest();
+            chatRequest.setModel(model);
+            chatRequest.setStream(true);
+            chatRequest.setTop_p(0.5);
+            chatRequest.setTemperature(0.5);
+            chatRequest.setEnable_search(false);
+            chatRequest.setEnable_thinking(enableThinking);
+            chatRequest.setThinking_budget(4000);
+            chatRequest.setResult_format("message");
+            chatRequest.setTools(functionManager.getTools());
+            chatRequest.setMessages(messages);
+
+            String jsonBody = JSON.toJSONString(chatRequest);
+            logger.info("大模型请求入参: model={}, apiUrl={}, jsonBody={}", model, apiUrl, jsonBody);
+
+            Request request = new Request.Builder()
+                .url(apiUrl)
+                .addHeader("Authorization", "Bearer " + apiKey)
+                .addHeader("Content-Type", "application/json")
+                .post(RequestBody.create(jsonBody, JSON_MEDIA_TYPE))
+                .build();
+
+            StringBuilder fullContent = new StringBuilder();
+            Map<Integer, StringBuilder> toolCallArgsBuffer = new HashMap<>();
+            List<ToolCall> finalToolCalls = new ArrayList<>();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    logger.error("请求失败：{} - {}", response.code(), response.message());
+                    return totalContent.toString();
+                }
+
+                ResponseBody body = response.body();
+                if (body == null) {
+                    return totalContent.toString();
+                }
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(body.byteStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (!line.startsWith("data: ")) {
+                            continue;
+                        }
+                        String data = line.substring(6).trim();
+                        if ("[DONE]".equals(data)) {
+                            break;
+                        }
+
+                        StreamResponse streamResponse = JSON.parseObject(data, StreamResponse.class);
+                        if (streamResponse == null || streamResponse.getChoices() == null
+                                || streamResponse.getChoices().length == 0) {
+                            continue;
+                        }
+                        StreamChoice choice = streamResponse.getChoices()[0];
+                        if (choice == null || choice.getDelta() == null) {
+                            continue;
+                        }
+                        StreamDelta delta = choice.getDelta();
+
+                        // 处理 tool_calls — 累积 arguments
+                        if (delta.getTool_calls() != null && !delta.getTool_calls().isEmpty()) {
+                            for (ToolCall tc : delta.getTool_calls()) {
+                                int index = tc.getIndex() != null ? tc.getIndex() : 0;
+                                if (tc.getFunction() == null) {
+                                    continue;
+                                }
+                                while (finalToolCalls.size() <= index) {
+                                    finalToolCalls.add(new ToolCall());
+                                }
+                                ToolCall existing = finalToolCalls.get(index);
+
+                                if (tc.getId() != null && existing.getId() == null) {
+                                    existing.setId(tc.getId());
+                                }
+                                if (existing.getFunction() == null) {
+                                    existing.setFunction(new FunctionCall());
+                                }
+                                if (tc.getFunction().getName() != null && existing.getFunction().getName() == null) {
+                                    existing.getFunction().setName(tc.getFunction().getName());
+                                }
+                                if (tc.getFunction().getArguments() != null) {
+                                    toolCallArgsBuffer
+                                        .computeIfAbsent(index, k -> new StringBuilder())
+                                        .append(tc.getFunction().getArguments());
+                                }
+                            }
+                        }
+
+                        // 处理普通文本内容
+                        String content = delta.getContent();
+                        if (content != null && !content.isEmpty()) {
+                            if (onToken != null) {
+                                onToken.accept(content);
+                            }
+                            fullContent.append(content);
+                        }
+                    }
+                }
+
+                // 将累积的 arguments 写回 finalToolCalls
+                for (Map.Entry<Integer, StringBuilder> entry : toolCallArgsBuffer.entrySet()) {
+                    if (finalToolCalls.size() > entry.getKey()) {
+                        ToolCall tc = finalToolCalls.get(entry.getKey());
+                        if (tc.getFunction() != null) {
+                            tc.getFunction().setArguments(entry.getValue().toString());
+                        }
+                    }
+                }
+                logger.info("本轮请求完成，累计内容长度：{}，待执行工具：{}", fullContent.length(), JSON.toJSONString(finalToolCalls));
+
+                // 执行所有 tool_calls，收集结果后继续循环
+                if (!finalToolCalls.isEmpty()) {
+                    // 先将 assistant 的 tool_calls 回复加入消息列表
+                    Message assistantMsg = new Message();
+                    assistantMsg.setRole("assistant");
+                    assistantMsg.setContent(fullContent.toString());
+                    assistantMsg.setTool_calls(finalToolCalls);
+                    messages.add(assistantMsg);
+
+                    boolean anyExecuted = false;
+                    for (ToolCall toolCall : finalToolCalls) {
+                        if (toolCall.getFunction() == null) {
+                            continue;
+                        }
+                        String functionName = toolCall.getFunction().getName();
+                        String args = toolCall.getFunction().getArguments();
+
+                        if (functionManager.hasFunction(functionName)) {
+                            if (onToken != null) {
+                                onToken.accept("\n[调用 " + functionName + " 工具，参数：" + args + "]\n");
+                            }
+                            String result = functionManager.execute(functionName, args, ctx);
+                            if (onToken != null) {
+                                onToken.accept("[" + functionName + " 结果：" + result + "]\n");
+                            }
+                            messages.add(Message.fromTool(toolCall.getId(), result));
+                            anyExecuted = true;
+                        } else {
+                            if (onToken != null) {
+                                onToken.accept("[未知的函数：" + functionName + "]\n");
+                            }
+                        }
+                    }
+                    if (anyExecuted) {
+                        depth++;
+                        continue; // 继续下一轮请求
+                    }
+                }
+
+                // 本轮对话结束（无 tool_call 或工具未找到），返回结果
+                String result = fullContent.toString();
+                totalContent.append(result);
+            } catch (IOException e) {
+                logger.error("请求失败：{}", e.getMessage(), e);
+            }
+            // 请求成功（或异常后），直接返回
+            break;
         }
 
-        ChatRequest chatRequest = new ChatRequest();
-        chatRequest.setModel(model);
-        chatRequest.setStream(true);
-        chatRequest.setTop_p(0.5);
-        chatRequest.setTemperature(0.5);
-        chatRequest.setEnable_search(false);
-        chatRequest.setEnable_thinking(enableThinking);
-        chatRequest.setThinking_budget(4000);
-        chatRequest.setResult_format("message");
-        chatRequest.setTools(functionManager.getTools());
-        chatRequest.setMessages(messages);
-
-        String jsonBody = JSON.toJSONString(chatRequest);
-
-        Request request = new Request.Builder()
-            .url(apiUrl)
-            .addHeader("Authorization", "Bearer " + apiKey)
-            .addHeader("Content-Type", "application/json")
-            .post(RequestBody.create(jsonBody, JSON_MEDIA_TYPE))
-            .build();
-
-        StringBuilder fullContent = new StringBuilder();
-        Map<Integer, StringBuilder> toolCallArgsBuffer = new HashMap<>();
-        List<ToolCall> finalToolCalls = new ArrayList<>();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                logger.error("请求失败：{} - {}", response.code(), response.message());
-                return "";
-            }
-
-            ResponseBody body = response.body();
-            if (body == null) {
-                return "";
-            }
-
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(body.byteStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (!line.startsWith("data: ")) {
-                        continue;
-                    }
-                    String data = line.substring(6).trim();
-                    if ("[DONE]".equals(data)) {
-                        break;
-                    }
-
-                    StreamResponse streamResponse = JSON.parseObject(data, StreamResponse.class);
-                    if (streamResponse == null || streamResponse.getChoices() == null
-                            || streamResponse.getChoices().length == 0) {
-                        continue;
-                    }
-                    StreamChoice choice = streamResponse.getChoices()[0];
-                    if (choice == null || choice.getDelta() == null) {
-                        continue;
-                    }
-                    StreamDelta delta = choice.getDelta();
-
-                    // 处理 tool_calls — 累积 arguments
-                    if (delta.getTool_calls() != null && !delta.getTool_calls().isEmpty()) {
-                        for (ToolCall tc : delta.getTool_calls()) {
-                            int index = tc.getIndex() != null ? tc.getIndex() : 0;
-                            if (tc.getFunction() == null) {
-                                continue;
-                            }
-                            while (finalToolCalls.size() <= index) {
-                                finalToolCalls.add(new ToolCall());
-                            }
-                            ToolCall existing = finalToolCalls.get(index);
-
-                            if (tc.getId() != null && existing.getId() == null) {
-                                existing.setId(tc.getId());
-                            }
-                            if (existing.getFunction() == null) {
-                                existing.setFunction(new FunctionCall());
-                            }
-                            if (tc.getFunction().getName() != null && existing.getFunction().getName() == null) {
-                                existing.getFunction().setName(tc.getFunction().getName());
-                            }
-                            if (tc.getFunction().getArguments() != null) {
-                                toolCallArgsBuffer
-                                    .computeIfAbsent(index, k -> new StringBuilder())
-                                    .append(tc.getFunction().getArguments());
-                            }
-                        }
-                    }
-
-                    // 处理普通文本内容
-                    String content = delta.getContent();
-                    if (content != null && !content.isEmpty()) {
-                        if (onToken != null) {
-                            onToken.accept(content);
-                        }
-                        fullContent.append(content);
-                    }
-                }
-            }
-
-            // 将累积的 arguments 写回 finalToolCalls
-            for (Map.Entry<Integer, StringBuilder> entry : toolCallArgsBuffer.entrySet()) {
-                if (finalToolCalls.size() > entry.getKey()) {
-                    ToolCall tc = finalToolCalls.get(entry.getKey());
-                    if (tc.getFunction() != null) {
-                        tc.getFunction().setArguments(entry.getValue().toString());
-                    }
-                }
-            }
-
-            // 执行所有 tool_calls，收集结果后统一发起下一轮对话
-            if (!finalToolCalls.isEmpty()) {
-                boolean anyExecuted = false;
-                for (ToolCall toolCall : finalToolCalls) {
-                    if (toolCall.getFunction() == null) {
-                        continue;
-                    }
-                    String functionName = toolCall.getFunction().getName();
-                    String args = toolCall.getFunction().getArguments();
-
-                    if (functionManager.hasFunction(functionName)) {
-                        if (onToken != null) {
-                            onToken.accept("\n[调用 " + functionName + " 工具，参数：" + args + "]\n");
-                        }
-                        String result = functionManager.execute(functionName, args, ctx);
-                        if (onToken != null) {
-                            onToken.accept("[" + functionName + " 结果：" + result + "]\n");
-                        }
-                        messages.add(Message.fromTool(toolCall.getId(), result));
-                        anyExecuted = true;
-                    } else {
-                        if (onToken != null) {
-                            onToken.accept("[未知的函数：" + functionName + "]\n");
-                        }
-                    }
-                }
-                if (anyExecuted) {
-                    return doChat(ctx, messages, onToken, depth + 1);
-                }
-            }
-
-        } catch (IOException e) {
-            logger.error("请求失败：{}", e.getMessage(), e);
-        }
-
-        return fullContent.toString();
+        return totalContent.toString();
     }
 
     @Override
@@ -266,7 +281,7 @@ public class QwenLlmClient implements LlmProvider {
             );
 
             ChatRequest req = new ChatRequest();
-            req.setModel("qwen-turbo");
+            req.setModel(model);
             req.setStream(false);
             req.setTemperature(0.3);
             req.setEnable_thinking(false);
@@ -274,6 +289,7 @@ public class QwenLlmClient implements LlmProvider {
             req.setMessages(messages);
 
             String jsonBody = JSON.toJSONString(req);
+            logger.info("标题生成请求入参: model=qwen-turbo, apiUrl={}, jsonBody={}", apiUrl, jsonBody);
             Request request = new Request.Builder()
                 .url(apiUrl)
                 .addHeader("Authorization", "Bearer " + apiKey)
@@ -287,6 +303,7 @@ public class QwenLlmClient implements LlmProvider {
                     return;
                 }
                 String body = response.body().string();
+                logger.info("标题生成请求返回: body={}", body);
                 com.alibaba.fastjson.JSONObject json = JSON.parseObject(body);
                 String title = json
                     .getJSONArray("choices")
