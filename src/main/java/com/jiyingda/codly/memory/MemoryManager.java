@@ -11,9 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +23,7 @@ import java.util.concurrent.Executors;
  * 会话数据管理器，负责存储和读取会话数据
  * 存储路径：~/.codly/memory/session/日期_时分_标题_6 位随机字符串.json
  * 存储格式：每行一条 JSON 记录，直接追加到文件尾部
- * sessionMessages 作为临时缓存，生成标题后写入磁盘并清空
+ * 消息先暂存到内存缓存，每 FLUSH_THRESHOLD 轮对话批量写入磁盘
  */
 public class MemoryManager {
 
@@ -33,6 +31,8 @@ public class MemoryManager {
 
     private static final String BASE_PATH = System.getProperty("user.home") + "/.codly/memory/session";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
+    /** 每积攒多少轮对话（一问一答算一轮）后批量写入磁盘 */
+    private static final int FLUSH_THRESHOLD = 3;
 
     private static MemoryManager instance;
     private final ExecutorService asyncExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -42,7 +42,9 @@ public class MemoryManager {
     });
 
     private String currentSessionFile;
-    private List<Message> sessionMessages = new ArrayList<>();
+    private final List<Message> sessionMessages = new ArrayList<>();
+    private final List<Message> pendingMessages = new ArrayList<>();
+    private int roundsSinceFlush = 0;
     private volatile boolean fileInitialized = false;
 
     private MemoryManager() {
@@ -77,12 +79,14 @@ public class MemoryManager {
         currentSessionFile = BASE_PATH + "/" + dateTime + "_" + safeTitle + "_" + randomSuffix + ".txt";
 
         logger.info("初始化会话文件：{}", currentSessionFile);
-        logger.info("缓存消息数量：{}", sessionMessages.size());
-
-        // 将缓存中的消息写入文件
-        flushMessagesToFile();
+        logger.info("缓存消息数量：{}", pendingMessages.size());
 
         fileInitialized = true;
+
+        // 把标题生成前暂存的消息写入磁盘（不重置轮次计数）
+        if (!pendingMessages.isEmpty()) {
+            flushPendingAsync(false);
+        }
     }
 
     /**
@@ -98,75 +102,70 @@ public class MemoryManager {
     }
 
     /**
-     * 添加消息到临时缓存
+     * 添加消息到缓存。assistant 消息视为一轮结束，每 FLUSH_THRESHOLD 轮批量写入磁盘。
+     *
+     * @return true 如果本次追加触发了批量写盘（达到阈值）
      */
-    public synchronized void appendMessageAsync(Message message) {
+    public synchronized boolean appendMessage(Message message) {
         sessionMessages.add(message);
-        logger.debug("消息添加到缓存：{}, 缓存大小：{}, 文件已初始化：{}", message.getRole(), sessionMessages.size(), fileInitialized);
+        pendingMessages.add(message);
 
-        // 如果文件已初始化，直接异步写入
-        if (fileInitialized) {
-            logger.debug("文件已初始化，异步写入单条消息");
-            flushSingleMessageAsync(message);
-            sessionMessages.clear(); // 清空缓存
+        if ("assistant".equals(message.getRole())) {
+            roundsSinceFlush++;
         }
-        // 如果文件未初始化，消息保留在缓存中，等待 initializeWithSession 调用时一起写入
+
+        logger.debug("消息添加到缓存：{}, 待写入：{}, 轮数：{}/{}, 文件已初始化：{}",
+                message.getRole(), pendingMessages.size(), roundsSinceFlush, FLUSH_THRESHOLD, fileInitialized);
+
+        if (fileInitialized && roundsSinceFlush >= FLUSH_THRESHOLD) {
+            flushPendingAsync(true);
+            return true;
+        }
+        return false;
     }
 
     /**
-     * 将缓存中的消息批量写入文件
+     * 强制将所有待写入消息刷盘（退出或 /clear 时调用）
      */
-    private void flushMessagesToFile() {
-        logger.debug("正在将缓存中的消息写入文件... size: {}", sessionMessages.size());
-        if (sessionMessages.isEmpty()) {
-            return;
+    public synchronized void flushNow() {
+        if (fileInitialized && !pendingMessages.isEmpty()) {
+            flushPendingAsync(false);
         }
-
-        CompletableFuture.runAsync(() -> {
-            synchronized (this) {
-                try {
-                    StringBuilder sb = new StringBuilder();
-                    for (Message message : sessionMessages) {
-                        JSONObject json = new JSONObject();
-                        json.put("role", message.getRole());
-                        json.put("content", message.getContent());
-                        if (message.getTool_calls() != null) {
-                            json.put("tool_calls", JSON.toJSON(message.getTool_calls()));
-                        }
-                        if (message.getTool_call_id() != null) {
-                            json.put("tool_call_id", message.getTool_call_id());
-                        }
-                        sb.append(json.toJSONString()).append("\n");
-                    }
-                    Files.writeString(Paths.get(currentSessionFile), sb.toString(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-                    logger.info("消息写入成功：{}", currentSessionFile);
-                    sessionMessages.clear(); // 写入后清空缓存
-                } catch (IOException e) {
-                    logger.error("写入文件失败：{}", e.getMessage(), e);
-                }
-            }
-        }, asyncExecutor);
     }
 
     /**
-     * 异步写入单条消息到文件
+     * 异步将 pendingMessages 批量写入磁盘
+     *
+     * @param resetRounds 是否重置轮次计数（正常阈值触发时重置，initializeWithSession 时不重置）
      */
-    private void flushSingleMessageAsync(Message message) {
+    private void flushPendingAsync(boolean resetRounds) {
+        List<Message> toWrite = new ArrayList<>(pendingMessages);
+        pendingMessages.clear();
+        if (resetRounds) {
+            roundsSinceFlush = 0;
+        }
+        logger.debug("批量写入 {} 条消息到磁盘, resetRounds={}", toWrite.size(), resetRounds);
+
         CompletableFuture.runAsync(() -> {
             try {
-                JSONObject json = new JSONObject();
-                json.put("role", message.getRole());
-                json.put("content", message.getContent());
-                if (message.getTool_calls() != null) {
-                    json.put("tool_calls", JSON.toJSON(message.getTool_calls()));
+                StringBuilder sb = new StringBuilder();
+                for (Message message : toWrite) {
+                    JSONObject json = new JSONObject();
+                    json.put("role", message.getRole());
+                    json.put("content", message.getContent());
+                    if (message.getTool_calls() != null) {
+                        json.put("tool_calls", JSON.toJSON(message.getTool_calls()));
+                    }
+                    if (message.getTool_call_id() != null) {
+                        json.put("tool_call_id", message.getTool_call_id());
+                    }
+                    sb.append(json.toJSONString()).append("\n");
                 }
-                if (message.getTool_call_id() != null) {
-                    json.put("tool_call_id", message.getTool_call_id());
-                }
-                String jsonLine = json.toJSONString() + "\n";
-                Files.writeString(Paths.get(currentSessionFile), jsonLine, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                Files.writeString(Paths.get(currentSessionFile), sb.toString(),
+                        StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                logger.info("批量写入成功：{} 条消息 -> {}", toWrite.size(), currentSessionFile);
             } catch (IOException e) {
-                logger.error("写入单条消息失败：{}", e.getMessage(), e);
+                logger.error("批量写入失败：{}", e.getMessage(), e);
             }
         }, asyncExecutor);
     }
@@ -190,6 +189,8 @@ public class MemoryManager {
      */
     public synchronized void clearSession() {
         sessionMessages.clear();
+        pendingMessages.clear();
+        roundsSinceFlush = 0;
         fileInitialized = false;
         currentSessionFile = null;
     }

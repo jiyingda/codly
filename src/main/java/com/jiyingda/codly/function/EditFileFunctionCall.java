@@ -13,6 +13,7 @@ import com.jiyingda.codly.data.Parameters;
 
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 局部编辑文件函数实现
@@ -42,6 +43,22 @@ public class EditFileFunctionCall implements FunctionCallApi {
     @Override
     public Parameters getParameters() {
         return PARAMETERS;
+    }
+
+    @Override
+    public boolean requiresConfirmation() {
+        return true;
+    }
+
+    @Override
+    public String confirmationSummary(String argsJson) {
+        try {
+            Map<String, String> args = JSON.parseObject(argsJson, new TypeReference<>() {});
+            String filePath = args == null ? null : args.get("filePath");
+            return "编辑文件: " + Objects.requireNonNullElse(filePath, argsJson);
+        } catch (Exception e) {
+            return "编辑文件: " + argsJson;
+        }
     }
 
     @Override

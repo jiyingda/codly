@@ -15,6 +15,7 @@ import com.jiyingda.codly.llm.LlmProvider;
 import com.jiyingda.codly.config.Config;
 import com.jiyingda.codly.config.ConfigException;
 import com.jiyingda.codly.constants.Banner;
+import com.jiyingda.codly.memory.LongTermMemoryManager;
 import com.jiyingda.codly.memory.MemoryManager;
 import com.jiyingda.codly.systeminfo.SystemInfoManager;
 import com.jiyingda.codly.prompt.SystemPrompt;
@@ -71,7 +72,8 @@ public class CodlyMain {
         }
 
         List<Message> memory = new ArrayList<>();
-        memory.add(Message.fromSystem(SystemPrompt.SOUL_PROMPT + "\n\n" +  SystemInfoManager.getInstance().currentTime()));
+        String longTermMemory = LongTermMemoryManager.getInstance().toPromptSection();
+        memory.add(Message.fromSystem(SystemPrompt.SOUL_PROMPT + longTermMemory + "\n\n" + SystemInfoManager.getInstance().currentTime()));
 
         // 初始化 MemoryManager
         MemoryManager memoryManager = MemoryManager.getInstance();
@@ -100,12 +102,15 @@ public class CodlyMain {
                     line = reader.readLine("> ");
                 } catch (UserInterruptException e) {
                     logger.info("用户中断，等待异步任务完成...");
+                    memoryManager.flushNow();
+                    LongTermMemoryManager.getInstance().flushAndExtractSync(ctx);
                     memoryManager.shutdown();
                     System.exit(0);
                     break;
                 } catch (EndOfFileException e) {
-                    // 退出前等待异步任务完成
                     logger.info("检测到 EOF，等待异步任务完成...");
+                    memoryManager.flushNow();
+                    LongTermMemoryManager.getInstance().flushAndExtractSync(ctx);
                     memoryManager.shutdown();
                     System.exit(0);
                     break;
@@ -115,8 +120,9 @@ public class CodlyMain {
                 }
                 DispatchResult result = dispatcher.dispatch(line, ctx);
                 if (result == DispatchResult.QUIT) {
-                    // 退出前等待异步任务完成
                     logger.info("用户退出，等待异步任务完成...");
+                    memoryManager.flushNow();
+                    LongTermMemoryManager.getInstance().flushAndExtractSync(ctx);
                     memoryManager.shutdown();
                     System.exit(0);
                     return;
@@ -130,7 +136,7 @@ public class CodlyMain {
                 // 保存用户消息到 memory 和 MemoryManager
                 Message userMessage = Message.fromUser(line);
                 memory.add(userMessage);
-                memoryManager.appendMessageAsync(userMessage);
+                memoryManager.appendMessage(userMessage);
 
                 if (!titleGenerated) {
                     titleGenerated = true;
@@ -179,10 +185,17 @@ public class CodlyMain {
                     System.out.print(CLEAR_LINE + ">> ");
                 }
 
-                // 保存助手消息到 memory 和 MemoryManager，并异步存储
+                // 保存助手消息到 memory 和 MemoryManager
                 Message assistantMessage = Message.formAssistant(res);
                 memory.add(assistantMessage);
-                memoryManager.appendMessageAsync(assistantMessage);
+                boolean flushed = memoryManager.appendMessage(assistantMessage);
+
+                // 暂存本轮对话；MemoryManager flush 时同步触发长期记忆提取
+                LongTermMemoryManager ltm = LongTermMemoryManager.getInstance();
+                ltm.appendRound(line, res);
+                if (flushed) {
+                    ltm.flushAndExtractAsync(ctx);
+                }
 
                 System.out.println();
             }

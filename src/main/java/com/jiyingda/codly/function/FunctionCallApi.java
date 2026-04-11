@@ -44,6 +44,24 @@ public interface FunctionCallApi {
      * @return 执行结果
      */
     String execute(String argsJson, CommandContext ctx);
+
+    /**
+     * 是否需要用户二次确认才能执行（写操作、危险操作应返回 true）
+     */
+    default boolean requiresConfirmation() {
+        return false;
+    }
+
+    /**
+     * 生成确认提示摘要，供用户判断是否允许执行。
+     * 仅在 {@link #requiresConfirmation()} 返回 true 时被调用。
+     *
+     * @param argsJson 函数参数（JSON 格式）
+     * @return 人类可读的操作摘要
+     */
+    default String confirmationSummary(String argsJson) {
+        return getName() + " " + argsJson;
+    }
 }
 
 

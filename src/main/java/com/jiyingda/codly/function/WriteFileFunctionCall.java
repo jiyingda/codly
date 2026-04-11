@@ -12,6 +12,7 @@ import com.jiyingda.codly.command.CommandContext;
 import com.jiyingda.codly.data.Parameters;
 
 import java.io.IOException;
+import java.util.Objects;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -50,6 +51,24 @@ public class WriteFileFunctionCall implements FunctionCallApi {
     @Override
     public Parameters getParameters() {
         return PARAMETERS;
+    }
+
+    @Override
+    public boolean requiresConfirmation() {
+        return true;
+    }
+
+    @Override
+    public String confirmationSummary(String argsJson) {
+        try {
+            Map<String, Object> args = JSON.parseObject(argsJson, new TypeReference<>() {});
+            String filePath = args == null ? null : asString(args.get("filePath"));
+            boolean append = args != null && asBoolean(args.get("append"));
+            String action = append ? "追加写入" : "写入";
+            return action + "文件: " + Objects.requireNonNullElse(filePath, argsJson);
+        } catch (Exception e) {
+            return "写入文件: " + argsJson;
+        }
     }
 
     @Override

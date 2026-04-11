@@ -76,17 +76,26 @@ public class FunctionManager {
     }
 
     /**
-     * 执行一个函数
+     * 执行一个函数。若函数标记了 requiresConfirmation，会先通过终端让用户二次确认。
      *
      * @param functionName 函数名称
      * @param argsJson     函数参数（JSON 格式）
-     * @return 执行结果
+     * @return 执行结果；若用户拒绝则返回拒绝提示
      */
     public String execute(String functionName, String argsJson, CommandContext ctx) {
         FunctionCallApi functionCallApi = getFunction(functionName);
         if (functionCallApi == null) {
             return "未知的函数：" + functionName;
         }
+
+        if (functionCallApi.requiresConfirmation()) {
+            String summary = functionCallApi.confirmationSummary(argsJson);
+            boolean allowed = UserConfirmation.confirm(ctx.getTerminal(), summary);
+            if (!allowed) {
+                return "用户拒绝执行此操作";
+            }
+        }
+
         return functionCallApi.execute(argsJson, ctx);
     }
 

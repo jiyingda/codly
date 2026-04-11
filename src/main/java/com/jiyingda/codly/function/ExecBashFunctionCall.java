@@ -16,6 +16,7 @@ import java.io.InputStreamReader;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 执行 Bash 命令函数实现
@@ -45,6 +46,23 @@ public class ExecBashFunctionCall implements FunctionCallApi {
         execBashParams.setProperties(execBashProps);
         execBashParams.setRequired(Collections.singletonList("command"));
         return execBashParams;
+    }
+
+    @Override
+    public boolean requiresConfirmation() {
+        return true;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public String confirmationSummary(String argsJson) {
+        try {
+            Map<String, Object> args = JSON.parseObject(argsJson, Map.class);
+            String command = args == null ? null : (String) args.get("command");
+            return "执行 bash 命令: " + Objects.requireNonNullElse(command, argsJson);
+        } catch (Exception e) {
+            return "执行 bash 命令: " + argsJson;
+        }
     }
 
     @Override

@@ -14,6 +14,7 @@ import picocli.CommandLine.Command;
     CompactCommand.class,
     HelpCommand.class,
     ModelCommand.class,
+    MemoryCommand.class,
 })
 public class CommandDispatcher implements Runnable {
 
@@ -72,10 +73,11 @@ public class CommandDispatcher implements Runnable {
     public static String helpText() {
         return """
             可用命令：
-              /help   显示帮助信息
-              /clear  清空对话历史
+              /help    显示帮助信息
+              /clear   清空对话历史
               /compact 压缩对话历史，保留总结
-              /model  列出并切换模型
+              /model   列出并切换模型
+              /memory  查看长期记忆（/memory clear 清空，/memory delete <key> 删除）
               /quit (/exit)   退出程序
               /sysinfo 显示系统与环境信息""";
     }
