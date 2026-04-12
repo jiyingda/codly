@@ -13,6 +13,7 @@ import java.util.List;
  */
 public class CommandContext {
 
+    private Message systemPrompt;
     private final List<Message> memory;
     private final LlmProvider llmClient;
     private final Path startupPath;
@@ -42,6 +43,13 @@ public class CommandContext {
 
     public void setTerminal(Terminal terminal) {
         this.terminal = terminal;
+    }
+
+    public Message getSystemPrompt() {
+        return systemPrompt;
+    }
+    public void setSystemPrompt(Message systemPrompt) {
+        this.systemPrompt = systemPrompt;
     }
 
     public void resetMemory() {

@@ -72,8 +72,6 @@ public class CodlyMain {
         }
 
         List<Message> memory = new ArrayList<>();
-        String longTermMemory = LongTermMemoryManager.getInstance().toPromptSection();
-        memory.add(Message.fromSystem(SystemPrompt.SOUL_PROMPT + longTermMemory + "\n\n" + SystemInfoManager.getInstance().currentTime()));
 
         // 初始化 MemoryManager
         MemoryManager memoryManager = MemoryManager.getInstance();
@@ -168,6 +166,8 @@ public class CodlyMain {
                 progressThread.setDaemon(true);
                 progressThread.start();
 
+                String longTermMemory = LongTermMemoryManager.getInstance().toPromptSection();
+                ctx.setSystemPrompt(Message.fromSystem(SystemPrompt.SOUL_PROMPT + longTermMemory + "\n\n" + SystemInfoManager.getInstance().currentTime()));
                 String res = llmClient.chat(ctx, token -> {
                     if (responseStarted.compareAndSet(false, true)) {
                         waiting.set(false);

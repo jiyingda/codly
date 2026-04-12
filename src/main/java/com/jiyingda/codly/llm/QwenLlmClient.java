@@ -90,7 +90,10 @@ public class QwenLlmClient implements LlmProvider {
 
     @Override
     public String chat(CommandContext ctx, Consumer<String> onToken) {
-        return doChat(ctx, ctx.getMemory(), onToken);
+        List<Message> messages = new ArrayList<>();
+        messages.add(ctx.getSystemPrompt());
+        messages.addAll(ctx.getMemory());
+        return doChat(ctx, messages, onToken);
     }
 
     @Override
