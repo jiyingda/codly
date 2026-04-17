@@ -74,8 +74,8 @@ public class Config {
     /**
      * 检查配置是否成功加载
      */
-    public boolean isConfigLoaded() {
-        return configLoaded;
+    public boolean isNotConfigLoaded() {
+        return !configLoaded;
     }
 
     /**

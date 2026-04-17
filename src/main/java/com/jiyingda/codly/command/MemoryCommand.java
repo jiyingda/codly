@@ -1,7 +1,7 @@
 package com.jiyingda.codly.command;
 
-import com.jiyingda.codly.memory.LongTermMemoryManager;
-import com.jiyingda.codly.memory.LongTermMemoryManager.MemoryEntry;
+import com.jiyingda.codly.memory.MemoryManager;
+import com.jiyingda.codly.memory.MemoryManager.MemoryEntry;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
@@ -21,18 +21,18 @@ public class MemoryCommand implements Runnable, CliCommand {
 
     @Override
     public boolean execute(CommandContext ctx) {
-        LongTermMemoryManager manager = LongTermMemoryManager.getInstance();
+        MemoryManager manager = MemoryManager.getInstance();
 
         switch (action.toLowerCase()) {
             case "clear" -> {
-                manager.clearAll();
+                manager.clearAllMemory();
                 System.out.println("所有长期记忆已清空");
             }
             case "delete" -> {
                 if (actionArg.isBlank()) {
                     System.out.println("用法：/memory delete <key>");
                 } else {
-                    String result = manager.remove(actionArg);
+                    String result = manager.removeMemory(actionArg);
                     System.out.println(result);
                 }
             }
@@ -42,8 +42,8 @@ public class MemoryCommand implements Runnable, CliCommand {
         return false;
     }
 
-    private void listMemories(LongTermMemoryManager manager) {
-        List<MemoryEntry> entries = manager.getAll();
+    private void listMemories(MemoryManager manager) {
+        List<MemoryEntry> entries = manager.getAllMemory();
         if (entries.isEmpty()) {
             System.out.println("暂无长期记忆");
             return;

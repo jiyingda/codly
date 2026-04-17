@@ -56,7 +56,7 @@ public class QwenLlmClient implements LlmProvider {
         Config config = Config.getInstance();
 
         // 检查配置是否成功加载
-        if (!config.isConfigLoaded()) {
+        if (config.isNotConfigLoaded()) {
             throw new ConfigException("配置文件加载失败：" + config.getLoadError());
         }
 
