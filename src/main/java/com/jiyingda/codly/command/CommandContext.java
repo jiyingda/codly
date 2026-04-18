@@ -18,6 +18,7 @@ public class CommandContext {
     private final LlmProvider llmClient;
     private final Path startupPath;
     private Terminal terminal;
+    private volatile boolean shouldQuit;
 
     public CommandContext(List<Message> memory, LlmProvider llmClient, Path startupPath) {
         this.memory = memory;
@@ -55,5 +56,13 @@ public class CommandContext {
     public void resetMemory() {
         memory.clear();
         memory.add(Message.fromSystem(SystemPrompt.SOUL_PROMPT));
+    }
+
+    public boolean shouldQuit() {
+        return shouldQuit;
+    }
+
+    public void setShouldQuit(boolean shouldQuit) {
+        this.shouldQuit = shouldQuit;
     }
 }

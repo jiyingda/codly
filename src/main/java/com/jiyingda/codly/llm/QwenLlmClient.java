@@ -111,6 +111,9 @@ public class QwenLlmClient implements LlmProvider {
         int depth = 0;
 
         while (depth < MAX_TOOL_CALL_DEPTH) {
+            if (ctx.shouldQuit()) {
+                break;
+            }
             ChatRequest chatRequest = new ChatRequest();
             chatRequest.setModel(model);
             chatRequest.setStream(true);
@@ -232,6 +235,12 @@ public class QwenLlmClient implements LlmProvider {
 
                     boolean anyExecuted = false;
                     for (ToolCall toolCall : finalToolCalls) {
+                        if (ctx.shouldQuit()) {
+                            if (onToken != null) {
+                                onToken.accept("\n[收到退出信号，终止工具调用]\n");
+                            }
+                            break;
+                        }
                         if (toolCall.getFunction() == null) {
                             continue;
                         }
@@ -255,6 +264,9 @@ public class QwenLlmClient implements LlmProvider {
                         }
                     }
                     if (anyExecuted) {
+                        if (ctx.shouldQuit()) {
+                            break;
+                        }
                         depth++;
                         continue; // 继续下一轮请求
                     }

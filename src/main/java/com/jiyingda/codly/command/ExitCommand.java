@@ -10,6 +10,7 @@ public class ExitCommand implements Runnable, CliCommand {
 
     @Override
     public boolean execute(CommandContext ctx) {
+        ctx.setShouldQuit(true);
         return true;
     }
 }

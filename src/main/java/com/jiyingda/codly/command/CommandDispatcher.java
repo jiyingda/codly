@@ -15,6 +15,7 @@ import picocli.CommandLine.Command;
     HelpCommand.class,
     ModelCommand.class,
     MemoryCommand.class,
+    GenSkillCommand.class,
 })
 public class CommandDispatcher implements Runnable {
 
@@ -78,6 +79,7 @@ public class CommandDispatcher implements Runnable {
               /compact 压缩对话历史，保留总结
               /model   列出并切换模型
               /memory  查看长期记忆（/memory clear 清空，/memory delete <key> 删除）
+              /gen-skill 根据最近的对话自动生成一个 skill
               /quit (/exit)   退出程序
               /sysinfo 显示系统与环境信息""";
     }
