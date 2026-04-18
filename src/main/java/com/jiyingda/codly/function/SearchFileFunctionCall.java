@@ -32,10 +32,12 @@ import java.util.Map;
 @SuppressWarnings("unused")
 public class SearchFileFunctionCall implements FunctionCallApi {
 
+    /** 搜索最大递归深度，100 已足够覆盖所有正常文件系统 */
+    private static final int MAX_DEPTH = 100;
     private static final int MAX_RESULTS = 200;
     private static final Parameters PARAMETERS = Parameters.create()
-            .addProperty("pattern", "string", "搜索模式，如 *.java 或文件名")
-            .addProperty("directory", "string", "搜索目录，默认为启动目录")
+            .addProperty("pattern", "string", "glob 文件名匹配模式，如 *.java 或 **/test/**，不支持正则表达式")
+            .addProperty("directory", "string", "搜索的起始目录，默认为启动目录")
             .addRequired("pattern");
 
     @Override
@@ -56,14 +58,31 @@ public class SearchFileFunctionCall implements FunctionCallApi {
     @Override
     public String execute(String argsJson, CommandContext ctx) {
         try {
-            Map<String, String> args = JSON.parseObject(argsJson, new TypeReference<>() {});
-            String pattern = args == null ? null : args.get("pattern");
-            String directory = args == null ? null : args.get("directory");
+            Map<String, Object> args = JSON.parseObject(argsJson, new TypeReference<>() {});
+            if (args == null) {
+                return "参数解析失败";
+            }
+            String pattern = asString(args.get("pattern"));
+            if (pattern == null || pattern.isBlank()) {
+                return "未提供 pattern 参数";
+            }
+            String directory = asString(args.get("directory"));
             return searchFiles(pattern, directory, ctx.getStartupPath());
         } catch (Exception e) {
             return "执行 search_file 失败：" + e.getMessage();
         }
     }
+
+    private static String asString(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    /** 搜索时跳过的无关目录名称 */
+    private static final String[] SKIP_DIRECTORIES = {
+            ".git", "node_modules", ".idea", "target", "build",
+            ".gradle", ".mvn", ".claude", ".vscode", "out",
+            "__pycache__", ".svn", "dist"
+    };
 
     static String searchFiles(String pattern, String directory, Path workspaceRoot) {
         if (pattern == null || pattern.isBlank()) {
@@ -76,11 +95,17 @@ public class SearchFileFunctionCall implements FunctionCallApi {
             PathMatcher pathMatcher = buildPathMatcher(pattern.trim());
             List<String> results = new ArrayList<>();
 
-            Files.walkFileTree(searchRoot, java.util.EnumSet.noneOf(FileVisitOption.class), Integer.MAX_VALUE,
+            Files.walkFileTree(searchRoot, java.util.EnumSet.noneOf(FileVisitOption.class), MAX_DEPTH,
                     new SimpleFileVisitor<>() {
                         @Override
                         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                            return isInsideRoot(dir, root) ? FileVisitResult.CONTINUE : FileVisitResult.SKIP_SUBTREE;
+                            if (!isInsideRoot(dir, root)) {
+                                return FileVisitResult.SKIP_SUBTREE;
+                            }
+                            if (!dir.equals(searchRoot) && shouldSkipDirectory(dir)) {
+                                return FileVisitResult.SKIP_SUBTREE;
+                            }
+                            return FileVisitResult.CONTINUE;
                         }
 
                         @Override
@@ -88,8 +113,8 @@ public class SearchFileFunctionCall implements FunctionCallApi {
                             if (!attrs.isRegularFile() || !isInsideRoot(file, root)) {
                                 return FileVisitResult.CONTINUE;
                             }
-                            if (matches(pathMatcher, file, pattern.trim())) {
-                                results.add(file.toString());
+                            if (pathMatcher.matches(file.getFileName()) || pathMatcher.matches(file)) {
+                                results.add(root.relativize(file).toString());
                                 if (results.size() >= MAX_RESULTS) {
                                     return FileVisitResult.TERMINATE;
                                 }
@@ -155,10 +180,14 @@ public class SearchFileFunctionCall implements FunctionCallApi {
         return FileSystems.getDefault().getPathMatcher("glob:" + pattern);
     }
 
-    private static boolean matches(PathMatcher matcher, Path file, String pattern) {
-        return matcher.matches(file.getFileName())
-                || matcher.matches(file)
-                || file.getFileName().toString().contains(pattern);
+    private static boolean shouldSkipDirectory(Path dir) {
+        String name = dir.getFileName().toString();
+        for (String skip : SKIP_DIRECTORIES) {
+            if (name.equals(skip)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isInsideRoot(Path path, Path root) {

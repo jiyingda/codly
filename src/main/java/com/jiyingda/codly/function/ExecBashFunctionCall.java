@@ -26,12 +26,34 @@ public class ExecBashFunctionCall implements FunctionCallApi {
 
     @Override
     public String getName() {
-        return "exec_bash";
+        return "Bash";
     }
 
     @Override
     public String getDescription() {
-        return "用来执行 bash 命令";
+        return """
+        在持久化 shell 会话中执行给定的 bash 命令，支持可选超时。
+
+        执行前请遵循以下步骤：
+
+        1. 目录验证：
+           - 如果命令将创建新目录或文件，先用 ls 确认父目录存在
+           - 例如，执行 "mkdir foo/bar" 前先用 ls 检查 "foo" 是否存在
+
+        2. 命令执行：
+           - 含空格的路径必须用双引号包裹（如：cd "带空格的路径/文件.txt"）
+           - 正确示例：cd "/Users/name/My Documents"
+           - 错误示例：cd /Users/name/My Documents
+           - 确保引号正确后执行命令，并捕获输出
+
+        使用须知：
+          - command 参数为必填
+          - 可指定可选超时（最大 600000ms/10 分钟），默认 120000ms/2 分钟
+          - 请用 5-10 个字写一段清晰的命令描述
+          - 输出超过 30000 字符会被截断
+          - 多条命令用 `;` 或 `&&` 分隔，不要用换行（引号内换行除外）
+          - 尽量使用绝对路径，避免使用 `cd`，除非用户明确要求
+        """;
     }
 
     @Override
