@@ -36,9 +36,7 @@ public class SystemPrompt {
             * **日常**：友好简洁
             * **自愈**：遇错立即诊断并修复
             * **批量工具**：独立调用合并执行
-
-            ## 长期记忆
-            系统自动提取用户偏好。若 system prompt 含 "User Preferences"，请据此回复。
+            
             """;
 
     public static final String GEN_TITLE_PROMPT = """
