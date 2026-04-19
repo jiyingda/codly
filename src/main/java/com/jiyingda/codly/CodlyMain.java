@@ -18,7 +18,6 @@ import com.jiyingda.codly.llm.LlmProvider;
 import com.jiyingda.codly.memory.MemoryManager;
 import com.jiyingda.codly.prompt.SystemPrompt;
 import com.jiyingda.codly.systeminfo.SystemInfoManager;
-import com.jiyingda.codly.util.ProgressIndicator;
 import com.jiyingda.codly.util.TerminalUtils;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
@@ -34,18 +33,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Codly 命令行入口，负责用户交互主循环。
+ * Codly 命令行入口，负责初始化和用户交互主循环。
  *
  * @author jiyingda
  */
 public class CodlyMain {
 
     private static final Logger logger = LoggerFactory.getLogger(CodlyMain.class);
-    private static final String TITLE_ESCAPE_PREFIX = "\033]0;Codly — ";
-    private static final String TITLE_ESCAPE_SUFFIX = "\007";
 
     public static void main(String[] args) {
         // 禁用 JLine3 JNA provider 弃用警告
@@ -69,14 +65,13 @@ public class CodlyMain {
         }
 
         List<Message> memory = new ArrayList<>();
-
-        // 初始化 MemoryManager
         MemoryManager memoryManager = MemoryManager.getInstance();
-
         Path startupPath = Paths.get("").toAbsolutePath().normalize();
-        CommandDispatcher dispatcher = new CommandDispatcher();
         CommandContext ctx = new CommandContext(memory, llmClient, startupPath);
-        boolean titleGenerated = false;
+
+        SessionManager session = new SessionManager(memory, llmClient, memoryManager, ctx);
+        ResponseRenderer renderer = new ResponseRenderer();
+        CommandDispatcher dispatcher = new CommandDispatcher();
 
         printBanner();
         System.out.println("  输入对话内容开始编程，/help 查看可用命令");
@@ -97,79 +92,40 @@ public class CodlyMain {
                     line = reader.readLine("> ");
                 } catch (UserInterruptException e) {
                     logger.info("用户中断，等待异步任务完成...");
-                    shutdown(ctx, memoryManager);
+                    session.shutdown();
                     return;
                 } catch (EndOfFileException e) {
                     logger.info("检测到 EOF，等待异步任务完成...");
-                    shutdown(ctx, memoryManager);
+                    session.shutdown();
                     return;
                 }
                 if (line.trim().isEmpty()) {
                     continue;
                 }
+
                 DispatchResult result = dispatcher.dispatch(line, ctx);
                 if (result == DispatchResult.QUIT) {
                     logger.info("用户退出，等待异步任务完成...");
-                    shutdown(ctx, memoryManager);
+                    session.shutdown();
                     return;
                 } else if (result == DispatchResult.HANDLED) {
                     continue;
                 } else if (result == DispatchResult.UNKNOWN) {
                     System.out.println("未知命令，输入 /help 查看可用命令");
                     continue;
+                } else if (result != DispatchResult.NOT_COMMAND) {
+                    continue;
                 }
 
-                // 保存用户消息到 memory 和 MemoryManager
-                Message userMessage = Message.fromUser(line);
-                memory.add(userMessage);
-                memoryManager.appendMessage(userMessage);
-
-                if (!titleGenerated) {
-                    titleGenerated = true;
-                    llmClient.generateTitleAsync(line, title -> {
-                        String terminalTitle = TITLE_ESCAPE_PREFIX + title + TITLE_ESCAPE_SUFFIX;
-                        System.out.print(terminalTitle);
-                        System.out.flush();
-                        // 使用标题重新初始化会话文件
-                        memoryManager.initializeWithSession(title.trim());
-                    });
-
-                }
-                AtomicBoolean responseStarted = new AtomicBoolean(false);
-                ProgressIndicator indicator = new ProgressIndicator();
-                indicator.start();
+                session.handleUserMessage(line);
 
                 String longTermMemory = memoryManager.toLongTermPromptSection();
-                ctx.setSystemPrompt(Message.fromSystem(SystemPrompt.SOUL_PROMPT + longTermMemory + "\n\n" + SystemInfoManager.getInstance().currentTime()));
-                String res = llmClient.chat(ctx, token -> {
-                    if (responseStarted.compareAndSet(false, true)) {
-                        indicator.stop();
-                        indicator.clear();
-                        System.out.print(">> ");
-                    }
-                    System.out.print(token);
-                    System.out.flush();
-                });
+                ctx.setSystemPrompt(Message.fromSystem(
+                        SystemPrompt.SOUL_PROMPT + longTermMemory + "\n\n" + SystemInfoManager.getInstance().currentTime()));
 
-                indicator.stop();
+                String res = renderer.render(onToken -> llmClient.chat(ctx, onToken));
 
-                if (!responseStarted.get()) {
-                    indicator.clear();
-                    System.out.print(">> ");
-                }
-
-                // 保存助手消息到 memory 和 MemoryManager
-                Message assistantMessage = Message.formAssistant(res);
-                memory.add(assistantMessage);
-                boolean flushed = memoryManager.appendMessage(assistantMessage);
-
-                // 暂存本轮对话；MemoryManager flush 时同步触发长期记忆提取
-                memoryManager.appendLtmRound(line, res);
-                if (flushed) {
-                    memoryManager.flushAndExtractLtmAsync(ctx);
-                }
-
-                System.out.println();
+                session.handleAssistantResponse(res, line);
             }
         } catch (IOException e) {
             System.err.println("Error: " + e.getMessage());
@@ -178,12 +134,5 @@ public class CodlyMain {
 
     private static void printBanner() {
         System.out.print(Banner.text("v1.0.0"));
-    }
-
-    private static void shutdown(CommandContext ctx, MemoryManager memoryManager) {
-        memoryManager.flushNow();
-        memoryManager.flushAndExtractLtmSync(ctx);
-        memoryManager.shutdown();
-        System.exit(0);
     }
 }
