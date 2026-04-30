@@ -3,6 +3,7 @@ package com.jiyingda.codly.skill;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.utils.InfoCmp;
+import org.jline.utils.WCWidth;
 
 import java.io.IOException;
 import java.util.List;
@@ -95,14 +96,19 @@ public class SkillSelector {
         int lines = 0;
         terminal.writer().println(BOLD + "选择要激活的 skill（↑↓ 移动，Enter 确认，q/Esc 取消）：" + RESET);
         lines++;
+        int terminalWidth = Math.max(40, terminal.getWidth());
         for (int i = 0; i < skills.size(); i++) {
             Skill s = skills.get(i);
-            String desc = truncate(s.getDescription(), 60);
+            String prefix = i == selected ? "  ❯ " : "    ";
+            int reserved = displayWidth(prefix) + displayWidth(s.getName()) + 2;
+            int descWidth = Math.max(0, terminalWidth - reserved);
+            String desc = truncateByDisplayWidth(s.getDescription(), descWidth);
             if (i == selected) {
                 terminal.writer().println(GREEN + BOLD + "  ❯ " + s.getName() + RESET
-                        + "  " + DIM + desc + RESET);
+                        + (desc.isEmpty() ? "" : "  " + DIM + desc + RESET));
             } else {
-                terminal.writer().println("    " + s.getName() + "  " + DIM + desc + RESET);
+                terminal.writer().println("    " + s.getName()
+                        + (desc.isEmpty() ? "" : "  " + DIM + desc + RESET));
             }
             lines++;
         }
@@ -122,6 +128,45 @@ public class SkillSelector {
         if (s == null) return "";
         String oneLine = s.replaceAll("\\s+", " ").trim();
         return oneLine.length() <= max ? oneLine : oneLine.substring(0, max - 1) + "…";
+    }
+
+    private static String truncateByDisplayWidth(String s, int maxWidth) {
+        if (s == null || maxWidth <= 0) return "";
+        String oneLine = s.replaceAll("\\s+", " ").trim();
+        if (oneLine.isEmpty()) return "";
+
+        int width = 0;
+        int i = 0;
+        while (i < oneLine.length()) {
+            int cp = oneLine.codePointAt(i);
+            int w = Math.max(0, WCWidth.wcwidth(cp));
+            if (width + w > maxWidth) {
+                if (maxWidth <= 1) {
+                    return "";
+                }
+                int ellipsisWidth = 1;
+                while (i > 0 && width + ellipsisWidth > maxWidth) {
+                    int prev = oneLine.codePointBefore(i);
+                    width -= Math.max(0, WCWidth.wcwidth(prev));
+                    i -= Character.charCount(prev);
+                }
+                return oneLine.substring(0, i) + "…";
+            }
+            width += w;
+            i += Character.charCount(cp);
+        }
+        return oneLine;
+    }
+
+    private static int displayWidth(String s) {
+        if (s == null || s.isEmpty()) return 0;
+        int width = 0;
+        for (int i = 0; i < s.length(); ) {
+            int cp = s.codePointAt(i);
+            width += Math.max(0, WCWidth.wcwidth(cp));
+            i += Character.charCount(cp);
+        }
+        return width;
     }
 
     private static Skill selectViaTextMenu(List<Skill> skills) {
