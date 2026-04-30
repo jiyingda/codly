@@ -78,9 +78,64 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // myskill 安装脚本下载(用于 curl | bash 场景,所以用 inline 返回)
+    if (pathname === '/download/myskill_install.sh' || pathname === '/myskill_install.sh') {
+        const scriptPath = path.join(__dirname, 'myskill_install.sh');
+        if (fs.existsSync(scriptPath)) {
+            res.writeHead(200, {
+                'Content-Type': 'application/x-sh',
+                'Cache-Control': 'no-cache'
+            });
+            const stream = fs.createReadStream(scriptPath);
+            stream.pipe(res);
+        } else {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'myskill install script not found' }));
+        }
+        return;
+    }
+
+    // myskill 二进制下载:支持 /download/myskill 及 /download/myskill-<os>-<arch>
+    // 允许的文件名白名单,防止路径穿越
+    {
+        const myskillMatch = pathname.match(/^\/download\/(myskill(?:-[a-z0-9]+-[a-z0-9]+)?(?:\.exe)?)$/);
+        if (myskillMatch) {
+            const fileName = myskillMatch[1];
+            const binaryPath = path.join(__dirname, fileName);
+            if (fs.existsSync(binaryPath)) {
+                res.writeHead(200, {
+                    'Content-Type': 'application/octet-stream',
+                    'Content-Disposition': `attachment; filename="${fileName}"`,
+                    'Cache-Control': 'no-cache'
+                });
+                const stream = fs.createReadStream(binaryPath);
+                stream.pipe(res);
+            } else {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: `${fileName} not found` }));
+            }
+            return;
+        }
+    }
+
     // 根路径和 Codly 页面
     if (pathname === '/' || pathname === '/codly' || pathname === '/codly.html') {
         const filePath = path.join(__dirname, 'codly.html');
+        fs.readFile(filePath, (err, content) => {
+            if (err) {
+                res.writeHead(404);
+                res.end('File not found');
+            } else {
+                res.writeHead(200, { 'Content-Type': MIME_TYPES['.html'] });
+                res.end(content);
+            }
+        });
+        return;
+    }
+
+    // myskill 页面
+    if (pathname === '/myskill' || pathname === '/myskill.html') {
+        const filePath = path.join(__dirname, 'myskill.html');
         fs.readFile(filePath, (err, content) => {
             if (err) {
                 res.writeHead(404);

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Codly - AI 编程助手</title>
+    <title>myskill - Skill 管理工具</title>
     <link rel="icon" type="image/svg+xml" href="static/images/favicon.svg">
     <style>
         :root {
@@ -524,13 +524,13 @@
             <div class="nav-brand">
                 <a href="/" class="logo">&lt;Codly /&gt;</a>
                 <div class="nav-products">
-                    <a class="nav-product active" href="/codly">codly</a>
-                    <a class="nav-product" href="/myskill">myskill</a>
+                    <a class="nav-product" href="/codly">codly</a>
+                    <a class="nav-product active" href="/myskill">myskill</a>
                 </div>
             </div>
             <div class="nav-links">
                 <a href="#download">Download</a>
-                <a href="https://github.com/jiyingda/codly" target="_blank">GitHub</a>
+                <a href="https://github.com/jiyingda/myskill" target="_blank">GitHub</a>
             </div>
         </div>
     </nav>
@@ -538,19 +538,15 @@
     <!-- Hero Section -->
     <section class="hero">
         <pre class="ascii-logo">
-   ██████╗ ██████╗ ██████╗ ██╗    ██╗   ██╗
-  ██╔════╝██╔═══██╗██╔══██╗██║    ╚██╗ ██╔╝
-  ██║     ██║   ██║██║  ██║██║     ╚████╔╝
-  ██║     ██║   ██║██║  ██║██║      ╚██╔╝
-  ╚██████╗╚██████╔╝██████╔╝███████╗  ██║
-   ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝  ╚═╝
+ __  __  __   __  ____   _  __  ___  _     _
+|  \/  | \ \ / / / ___| | |/ / |_ _|| |   | |
+| |\/| |  \ V /  \___ \ | ' /   | | | |   | |
+| |  | |   | |    ___) || . \   | | | |___| |___
+|_|  |_|   |_|   |____/ |_|\_\ |___||_____|_____|
 
-         /\_____/\
-         ( o . o )   Your AI Coding Companion
-          > ^ ^ <
-         /|     |\
+           Your Skill Manager for Codly
         </pre>
-        <p class="tagline">AI-Powered <span>Programming</span> Assistant</p>
+        <p class="tagline">Create · Install · Share <span>Skills</span></p>
         <div class="hero-buttons">
             <a href="#download" class="btn btn-primary">
                 <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -558,7 +554,7 @@
                 </svg>
                 Start
             </a>
-            <a href="https://github.com/jiyingda/codly" target="_blank" class="btn btn-secondary">
+            <a href="https://github.com/jiyingda/myskill" target="_blank" class="btn btn-secondary">
                 <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                 </svg>
@@ -567,7 +563,7 @@
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
             <div class="code-display">
-                <span class="prompt">$</span><span class="command">curl -fsSL http://codly.jiyingda.com/install.sh | bash</span>
+                <span class="prompt">$</span><span class="command">curl -fsSL http://codly.jiyingda.com/myskill_install.sh | bash</span>
             </div>
             <button class="copy-btn" onclick="copyCodeFromDisplay(this)">Copy</button>
         </div>
@@ -577,24 +573,24 @@
     <section id="download" class="download">
         <div class="section-title">
             <h2>START</h2>
-            <p>终端 AI 编程助手</p>
+            <p>Skill 管理工具</p>
         </div>
 
         <div class="download-item">
             <h3>Requirements</h3>
             <p style="margin-top: 10px;">
-                <strong>Java:</strong> 17 or higher<br>
-                <strong>Maven:</strong> 3.6+ (for building from source)<br>
-                <strong>OS:</strong> macOS, Linux, WSL
+                <strong>OS:</strong> macOS (Apple Silicon / Intel), Linux (x64 / arm64)<br>
+                <strong>Shell:</strong> bash / zsh<br>
+                <strong>Codly:</strong> 建议先安装 codly，skills 放在 <code>~/.codly/skills</code>
             </p>
         </div>
 
         <div class="download-item">
             <h3>Install</h3>
-            <p>One-line installation</p>
+            <p>一键安装（自动检测平台）</p>
             <div>
                 <div class="code-block">
-                    <code><span class="command">curl</span> -fsSL http://codly.jiyingda.com/install.sh | <span class="command">bash</span></code>
+                    <code><span class="command">curl</span> -fsSL http://codly.jiyingda.com/myskill_install.sh | <span class="command">bash</span></code>
                 </div>
                 <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
@@ -602,10 +598,51 @@
 
         <div class="download-item">
             <h3>Run</h3>
-            <p>Run after installation</p>
+            <p>查看帮助</p>
             <div>
                 <div class="code-block">
-                    <code><span class="command">codly</span></code>
+                    <code><span class="command">myskill</span> --help</code>
+                </div>
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Usage Section -->
+    <section class="download" style="border-top: 1px solid var(--border);">
+        <div class="section-title">
+            <h2>USAGE</h2>
+            <p>常用命令</p>
+        </div>
+
+        <div class="download-item">
+            <h3>创建 Skill</h3>
+            <p>在 <code>~/.codly/skills</code> 下创建一个新 Skill 目录</p>
+            <div>
+                <div class="code-block">
+                    <code><span class="command">myskill</span> create commit-helper</code>
+                </div>
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+        </div>
+
+        <div class="download-item">
+            <h3>列出 Skills</h3>
+            <p>查看当前机器已安装的 Skill</p>
+            <div>
+                <div class="code-block">
+                    <code><span class="command">myskill</span> list</code>
+                </div>
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+        </div>
+
+        <div class="download-item">
+            <h3>在 codly 中使用</h3>
+            <p>进入 codly 后输入 <code>/skill</code> 选择，或 <code>/skill-&lt;name&gt;</code> 直接激活</p>
+            <div>
+                <div class="code-block">
+                    <code><span class="command">/skill-commit-helper</span></code>
                 </div>
                 <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
@@ -620,39 +657,24 @@
         </div>
 
         <div class="download-item" style="border-color: rgba(245, 158, 11, 0.3);">
-            <h3 style="color: #f59e0b;">⚠️ 安全警告</h3>
+            <h3 style="color: #f59e0b;">⚠️ 安装脚本</h3>
             <p style="color: var(--text-secondary); line-height: 1.8;">
-                <strong>Shell 命令执行：</strong>Codly 可通过 <code>exec_bash</code> 执行 bash 命令。
-                该功能可能运行会对系统造成风险的命令：<br><br>
-                • 修改或删除系统文件<br>
-                • 更改系统配置<br>
-                • 安装或卸载软件包<br>
-                • 访问敏感数据<br><br>
-                <strong>请务必在批准前审查建议的命令。</strong> 使用风险自负。
+                <strong>curl | bash 注意事项：</strong>安装脚本会：<br><br>
+                • 根据当前平台从 <code>http://codly.jiyingda.com</code> 下载 myskill 二进制<br>
+                • 安装到 <code>~/.local/bin/myskill</code>（或 <code>--system</code> 时 <code>/usr/local/bin</code>）<br>
+                • macOS 上去除 <code>com.apple.quarantine</code> 标记<br><br>
+                <strong>请在执行前审查脚本内容。</strong>
             </p>
         </div>
 
         <div class="download-item" style="border-color: rgba(245, 158, 11, 0.3);">
-            <h3 style="color: #f59e0b;">⚠️ API Key 安全</h3>
+            <h3 style="color: #f59e0b;">⚠️ Skill 来源</h3>
             <p style="color: var(--text-secondary); line-height: 1.8;">
-                <strong>保护您的凭证：</strong>API Key 存储在 <code>~/.codly/settings.json</code> 中。
-                请确保：<br><br>
-                • 切勿将此文件提交到版本控制系统<br>
-                • 将 <code>~/.codly/</code> 添加到全局 <code>.gitignore</code><br>
-                • 保密您的 API Key<br>
-                • 定期检查 API 使用情况
-            </p>
-        </div>
-
-        <div class="download-item" style="border-color: rgba(245, 158, 11, 0.3);">
-            <h3 style="color: #f59e0b;">⚠️ AI 生成代码</h3>
-            <p style="color: var(--text-secondary); line-height: 1.8;">
-                <strong>需要代码审查：</strong>Codly 使用 AI 生成代码和建议。
-                请始终：<br><br>
-                • 在使用前审查生成的代码<br>
-                • 在安全环境中充分测试<br>
-                • 未经审计不要将 AI 生成代码用于关键系统<br>
-                • 注意潜在的安全漏洞
+                <strong>第三方 Skill 的风险：</strong>Skill 的 <code>SKILL.md</code> 会作为提示注入到 codly 的 system prompt：<br><br>
+                • 只安装来源可信的 Skill<br>
+                • 在激活前阅读 <code>SKILL.md</code> 的 Instructions<br>
+                • 注意 Skill 可能调用 <code>exec_bash</code> 等工具<br>
+                • 不确定时不要启用
             </p>
         </div>
     </section>
@@ -662,8 +684,8 @@
         <p>&copy; 2026 Codly</p>
         <div class="footer-links">
             <a href="#download">下载</a>
-            <a href="https://github.com/jiyingda/codly">GitHub</a>
-            <a href="https://github.com/jiyingda/codly" target="_blank">文档</a>
+            <a href="https://github.com/jiyingda/myskill">GitHub</a>
+            <a href="https://github.com/jiyingda/myskill" target="_blank">文档</a>
         </div>
     </footer>
 
