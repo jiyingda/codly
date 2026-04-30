@@ -17,6 +17,7 @@ import com.jiyingda.codly.llm.LlmClient;
 import com.jiyingda.codly.llm.LlmProvider;
 import com.jiyingda.codly.memory.MemoryManager;
 import com.jiyingda.codly.prompt.SystemPrompt;
+import com.jiyingda.codly.skill.SkillRegistry;
 import com.jiyingda.codly.systeminfo.SystemInfoManager;
 import com.jiyingda.codly.util.TerminalUtils;
 import org.jline.reader.EndOfFileException;
@@ -66,6 +67,7 @@ public class CodlyMain {
 
         List<Message> memory = new ArrayList<>();
         MemoryManager memoryManager = MemoryManager.getInstance();
+        SkillRegistry.getInstance().load();
         Path startupPath = Paths.get("").toAbsolutePath().normalize();
         CommandContext ctx = new CommandContext(memory, llmClient, startupPath);
 
@@ -120,8 +122,11 @@ public class CodlyMain {
                 session.handleUserMessage(line);
 
                 String longTermMemory = memoryManager.toLongTermPromptSection();
+                String skillCatalog = SkillRegistry.getInstance().toCatalogSection();
+                String activeSkills = ctx.activeSkillsPromptSection();
                 ctx.setSystemPrompt(Message.fromSystem(
-                        SystemPrompt.SOUL_PROMPT + longTermMemory + "\n\n" + SystemInfoManager.getInstance().currentTime()));
+                        SystemPrompt.SOUL_PROMPT + skillCatalog + activeSkills + longTermMemory
+                                + "\n\n" + SystemInfoManager.getInstance().currentTime()));
 
                 String res = renderer.render(onToken -> llmClient.chat(ctx, onToken));
 
