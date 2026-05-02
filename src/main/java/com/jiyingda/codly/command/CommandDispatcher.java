@@ -21,6 +21,7 @@ import java.util.Optional;
     MemoryCommand.class,
     GenSkillCommand.class,
     SkillCommand.class,
+    SysInfoCommand.class,
 })
 public class CommandDispatcher implements Runnable {
 

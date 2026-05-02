@@ -72,24 +72,39 @@ java -jar target/codly-1.0-SNAPSHOT.jar
 ## CLI 命令
 
 ```text
-/help      显示帮助
-/clear     清空对话历史
-/compact   压缩对话历史，保留总结
-/model     选择模型
-/quit      退出
-/exit      退出
+/help                   显示帮助信息
+/clear                  清空对话历史
+/compact                压缩对话历史，保留总结
+/model                  列出并切换当前使用的模型
+/memory                 查看长期记忆
+/memory clear           清空所有长期记忆
+/memory delete <key>    删除指定长期记忆条目
+/gen-skill              根据最近的对话自动生成一个 skill
+/skill                  交互式选择并激活 skill（↑↓ 选择，Enter 确认）
+/skill-<name>           直接激活指定 skill
+/sysinfo                显示当前系统与项目环境信息
+/sysinfo refresh        强制重新采集系统信息
+/quit                   退出程序
+/exit                   退出程序
 ```
 
 终端快捷键：
 - `Ctrl+C` 退出程序
-- `Ctrl+U` 取消当前输入并继续
+- `Ctrl+U` 清空当前输入行
 
 ## 内置工具能力
 
-- `read_file`：读取文件内容
-- `write_file`：写入文件内容（支持覆盖和追加）
-- `search_file`：按模式搜索文件
-- `exec_bash`：执行 Bash 命令
+| 工具 | 说明 |
+|------|------|
+| `read_file` | 读取文件内容（限工作目录，最大 64KB） |
+| `write_file` | 写入文件内容（支持覆盖和追加，最大 256KB） |
+| `edit_file` | 对文件进行局部替换，避免覆盖整个文件 |
+| `search_file` | 按 glob 模式在工作目录内搜索文件 |
+| `Grep` | 在文件中搜索文本/正则内容 |
+| `list_directory` | 列出目录内容 |
+| `Bash` | 执行 Bash 命令（执行前需用户确认，超时 30 秒） |
+| `system_info` | 读取系统和运行环境信息 |
+| `web_search` | 通过通义搜索 API 搜索互联网内容 |
 
 ## 安全边界与注意事项
 
