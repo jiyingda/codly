@@ -23,6 +23,7 @@ public class ChatRequest {
     private int thinking_budget;
     private String result_format;
     private List<Tool> tools;
+    private StreamOptions stream_options;
 
     public String getModel() {
         return model;
@@ -103,5 +104,33 @@ public class ChatRequest {
     public void setTools(List<Tool> tools) {
         this.tools = tools;
     }
-}
 
+    public StreamOptions getStream_options() {
+        return stream_options;
+    }
+
+    public void setStream_options(StreamOptions stream_options) {
+        this.stream_options = stream_options;
+    }
+
+    /**
+     * 流式选项，用于请求 usage 统计
+     */
+    public static class StreamOptions {
+        private boolean include_usage;
+
+        public StreamOptions() {}
+
+        public StreamOptions(boolean include_usage) {
+            this.include_usage = include_usage;
+        }
+
+        public boolean isInclude_usage() {
+            return include_usage;
+        }
+
+        public void setInclude_usage(boolean include_usage) {
+            this.include_usage = include_usage;
+        }
+    }
+}

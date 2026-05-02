@@ -125,6 +125,7 @@ public class QwenLlmClient implements LlmProvider {
             chatRequest.setResult_format("message");
             chatRequest.setTools(functionManager.getTools());
             chatRequest.setMessages(messages);
+            chatRequest.setStream_options(new ChatRequest.StreamOptions(true));
 
             String jsonBody = JSON.toJSONString(chatRequest);
             logger.info("大模型请求入参: model={}, apiUrl={}, jsonBody={}", model, apiUrl, jsonBody);
@@ -139,6 +140,7 @@ public class QwenLlmClient implements LlmProvider {
             StringBuilder fullContent = new StringBuilder();
             Map<Integer, StringBuilder> toolCallArgsBuffer = new HashMap<>();
             List<ToolCall> finalToolCalls = new ArrayList<>();
+            int[] usageInfo = new int[3]; // [prompt_tokens, completion_tokens, total_tokens]
 
             try (Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful()) {
@@ -165,7 +167,19 @@ public class QwenLlmClient implements LlmProvider {
                         StreamResponse streamResponse = JSON.parseObject(data, StreamResponse.class);
                         if (streamResponse == null || streamResponse.getChoices() == null
                                 || streamResponse.getChoices().length == 0) {
+                            // 可能是只包含 usage 的最后一个 chunk
+                            if (streamResponse != null && streamResponse.getUsage() != null) {
+                                usageInfo[0] = streamResponse.getUsage().getPrompt_tokens();
+                                usageInfo[1] = streamResponse.getUsage().getCompletion_tokens();
+                                usageInfo[2] = streamResponse.getUsage().getTotal_tokens();
+                            }
                             continue;
+                        }
+                        // 捕获 usage（通常在最后一个 chunk）
+                        if (streamResponse.getUsage() != null) {
+                            usageInfo[0] = streamResponse.getUsage().getPrompt_tokens();
+                            usageInfo[1] = streamResponse.getUsage().getCompletion_tokens();
+                            usageInfo[2] = streamResponse.getUsage().getTotal_tokens();
                         }
                         StreamChoice choice = streamResponse.getChoices()[0];
                         if (choice == null || choice.getDelta() == null) {
@@ -275,6 +289,10 @@ public class QwenLlmClient implements LlmProvider {
                 // 本轮对话结束（无 tool_call 或工具未找到），返回结果
                 String result = fullContent.toString();
                 totalContent.append(result);
+                // 传递 usage 信息（通过特殊标记）
+                if (usageInfo[2] > 0 && onToken != null) {
+                    onToken.accept("\u0000USAGE:" + usageInfo[0] + ":" + usageInfo[1] + ":" + usageInfo[2]);
+                }
             } catch (IOException e) {
                 logger.error("请求失败：{}", e.getMessage(), e);
             }
