@@ -13,6 +13,7 @@ import com.jiyingda.codly.config.Config;
 import com.jiyingda.codly.config.ConfigException;
 import com.jiyingda.codly.constants.Banner;
 import com.jiyingda.codly.data.Message;
+import com.jiyingda.codly.knowledge.KnowledgeRepository;
 import com.jiyingda.codly.llm.LlmClient;
 import com.jiyingda.codly.llm.LlmProvider;
 import com.jiyingda.codly.memory.MemoryManager;
@@ -68,6 +69,7 @@ public class CodlyMain {
         List<Message> memory = new ArrayList<>();
         MemoryManager memoryManager = MemoryManager.getInstance();
         SkillRegistry.getInstance().load();
+        KnowledgeRepository.getInstance().load();
         Path startupPath = Paths.get("").toAbsolutePath().normalize();
         CommandContext ctx = new CommandContext(memory, llmClient, startupPath);
 
@@ -124,8 +126,10 @@ public class CodlyMain {
                 String longTermMemory = memoryManager.toLongTermPromptSection();
                 String skillCatalog = SkillRegistry.getInstance().toCatalogSection();
                 String activeSkills = ctx.activeSkillsPromptSection();
+                String knowledgeCatalog = KnowledgeRepository.getInstance().toCatalogSection();
                 ctx.setSystemPrompt(Message.fromSystem(
                         SystemPrompt.SOUL_PROMPT + skillCatalog + activeSkills + longTermMemory
+                                + knowledgeCatalog
                                 + "\n\n" + SystemInfoManager.getInstance().currentTime()));
 
                 String res = renderer.render(onToken -> llmClient.chat(ctx, onToken));

@@ -22,6 +22,7 @@ import java.util.Optional;
     GenSkillCommand.class,
     SkillCommand.class,
     SysInfoCommand.class,
+    KbCommand.class,
 })
 public class CommandDispatcher implements Runnable {
 
@@ -94,6 +95,7 @@ public class CommandDispatcher implements Runnable {
               /gen-skill 根据最近的对话自动生成一个 skill
               /skill   交互式选择并激活 skill（↑↓ 选择，Enter 确认）
               /skill-<name>  直接激活指定 skill
+              /kb      查看与管理知识包（show / section / search / scaffold / status / delete / reload）
               /quit (/exit)   退出程序
               /sysinfo 显示系统与环境信息""";
     }

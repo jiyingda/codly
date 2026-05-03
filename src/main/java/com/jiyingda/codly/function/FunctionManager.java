@@ -37,6 +37,11 @@ public class FunctionManager {
         registerFunction(new ExecBashFunctionCall());
         registerFunction(new SystemInfoFunctionCall());
         registerFunction(new WebSearchFunctionCall());
+        registerFunction(new KbListFunctionCall());
+        registerFunction(new KbSearchFunctionCall());
+        registerFunction(new KbReadFunctionCall());
+        registerFunction(new KbSectionFunctionCall());
+        registerFunction(new KbSourcesFunctionCall());
         for (FunctionCallApi functionCall : functions.values()) {
             tools.add(Tool.createFunction(functionCall));
         }

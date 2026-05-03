@@ -82,6 +82,14 @@ java -jar target/codly-1.0-SNAPSHOT.jar
 /gen-skill              根据最近的对话自动生成一个 skill
 /skill                  交互式选择并激活 skill（↑↓ 选择，Enter 确认）
 /skill-<name>           直接激活指定 skill
+/kb                     打印 INDEX.md（无知识包时显示提示）
+/kb show <name>         打印某知识包 KNOWLEDGE.md 全文
+/kb section <name> <s>  打印某节（s = positioning|concepts|relations|flows|diff|pending|sources）
+/kb search <query>      关键字检索全部知识包
+/kb scaffold <name> "<system>"  生成空骨架知识包
+/kb status <name> <s>   修改 frontmatter status（draft|reviewed|stale）
+/kb delete <name>       删除整个知识包目录（带确认）
+/kb reload              重新扫描 ~/.codly/knowledge/ 并重建索引
 /sysinfo                显示当前系统与项目环境信息
 /sysinfo refresh        强制重新采集系统信息
 /quit                   退出程序
@@ -105,6 +113,33 @@ java -jar target/codly-1.0-SNAPSHOT.jar
 | `Bash` | 执行 Bash 命令（执行前需用户确认，超时 30 秒） |
 | `system_info` | 读取系统和运行环境信息 |
 | `web_search` | 通过通义搜索 API 搜索互联网内容 |
+| `kb_list` | 列出 ~/.codly/knowledge/ 下全部已加载的知识包 |
+| `kb_search` | 跨所有知识包做关键字检索（节级粒度，TF 打分） |
+| `kb_read` | 读取指定知识包 KNOWLEDGE.md 全文（>32KB 拒绝） |
+| `kb_section` | 读取指定知识包的某节（positioning/concepts/relations/flows/diff/pending/sources） |
+| `kb_sources` | 读取指定知识包的 sources.json 原文（追溯 Confluence pageId） |
+
+## 知识库（Knowledge Packs）
+
+Codly 在 `~/.codly/knowledge/` 下加载与 [skill-kit/extract-system-knowledge](https://github.com/) 完全对齐的"系统知识包"：
+
+```
+~/.codly/knowledge/
+├── INDEX.md                      # 由 Codly 自动维护的总索引
+└── <name>-knowledge/
+    ├── KNOWLEDGE.md              # frontmatter 7 字段 + 7 节固定正文
+    └── sources.json              # schema_version=1 的原始资料索引
+```
+
+KNOWLEDGE.md frontmatter 字段白名单：`name / system / description / generated_at / generator / code_anchors[] / status`。
+正文 7 节：系统定位 / 概念表 / 系统关系 / 核心流程 / 文档 vs 代码差异 / 未覆盖 / 出处索引。
+
+启动时 Codly 会扫描全部知识包并构建关键字倒排索引，把"目录"段（pack 名 + system + description + status）注入 system prompt；模型按需调用 `kb_search` / `kb_section` / `kb_read` / `kb_sources` 工具检索具体内容。
+
+知识包的产出路径推荐两种：
+
+- 在 Cursor 中使用 `extract-system-knowledge` skill 生成后落到 `~/.codly/knowledge/`
+- 直接 `/kb scaffold <name> "<system 描述>"` 生成空骨架后手工补充正文
 
 ## 安全边界与注意事项
 
