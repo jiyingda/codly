@@ -68,11 +68,12 @@ download_jar() {
         print_warn "JAR 包已存在，是否重新下载？"
         if [ -t 0 ]; then
             read -p "(y/N): " confirm
+          if [ "$confirm" != "y" ]; then
+                print_info "使用现有 JAR 包"
+                return 0
+            fi
         else
-            read -p "(y/N): " confirm < /dev/tty
-        fi
-        if [ "$confirm" != "y" ]; then
-            print_info "使用现有 JAR 包"
+            print_info "非交互模式，使用现有 JAR 包"
             return 0
         fi
     fi
@@ -104,11 +105,12 @@ create_config() {
         print_warn "配置文件已存在：$CONFIG_FILE"
         if [ -t 0 ]; then
             read -p "是否覆盖？(y/N): " confirm
+            if [ "$confirm" != "y" ]; then
+                print_info "跳过配置文件创建"
+                return 0
+            fi
         else
-            read -p "是否覆盖？(y/N): " confirm < /dev/tty
-        fi
-        if [ "$confirm" != "y" ]; then
-            print_info "跳过配置文件创建"
+            print_info "非交互模式，跳过配置文件覆盖"
             return 0
         fi
     fi
