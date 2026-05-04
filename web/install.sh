@@ -18,6 +18,36 @@ JAR_URL="http://codly.jiyingda.com/download/codly.jar"
 JAR_NAME="codly.jar"
 CONFIG_FILE="$INSTALL_DIR/settings.json"
 
+# 统一确认逻辑：优先当前 stdin，其次 /dev/tty；无终端时使用默认值
+confirm_yes_no() {
+    local prompt="$1"
+    local default_return="$2"
+    local answer=""
+
+    if [ -t 0 ]; then
+        read -r -p "$prompt" answer
+    elif [ -e /dev/tty ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+        printf "%s" "$prompt" > /dev/tty
+        IFS= read -r answer < /dev/tty || answer=""
+    else
+        if [ "$default_return" -eq 0 ]; then
+            print_info "未检测到可交互终端，默认选择: yes"
+        else
+            print_info "未检测到可交互终端，默认选择: no"
+        fi
+        return "$default_return"
+    fi
+
+    case "$answer" in
+        y|Y|yes|YES)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # 打印带颜色的消息
 print_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -65,15 +95,8 @@ download_jar() {
     fi
 
     if [ -f "$INSTALL_DIR/codly.jar" ]; then
-        print_warn "JAR 包已存在，是否重新下载？"
-        if [ -t 0 ]; then
-            read -p "(y/N): " confirm
-          if [ "$confirm" != "y" ]; then
-                print_info "使用现有 JAR 包"
-                return 0
-            fi
-        else
-            print_info "非交互模式，使用现有 JAR 包"
+        if ! confirm_yes_no "JAR 包已存在，是否重新下载？(y/N): " 1; then
+            print_info "使用现有 JAR 包"
             return 0
         fi
     fi
@@ -103,14 +126,8 @@ download_jar() {
 create_config() {
     if [ -f "$CONFIG_FILE" ]; then
         print_warn "配置文件已存在：$CONFIG_FILE"
-        if [ -t 0 ]; then
-            read -p "是否覆盖？(y/N): " confirm
-            if [ "$confirm" != "y" ]; then
-                print_info "跳过配置文件创建"
-                return 0
-            fi
-        else
-            print_info "非交互模式，跳过配置文件覆盖"
+        if ! confirm_yes_no "是否覆盖？(y/N): " 1; then
+            print_info "跳过配置文件创建"
             return 0
         fi
     fi
@@ -207,6 +224,7 @@ main() {
     echo "  Codly 一键安装脚本"
     echo "=========================================="
     echo ""
+
 
     check_java
     create_install_dir
