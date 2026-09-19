@@ -15,6 +15,7 @@ import java.util.List;
 public class Message {
     private String role;
     private String content;
+    private String reasoning_content;
     private List<ToolCall> tool_calls;
     private String tool_call_id;
 
@@ -32,6 +33,14 @@ public class Message {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public String getReasoning_content() {
+        return reasoning_content;
+    }
+
+    public void setReasoning_content(String reasoning_content) {
+        this.reasoning_content = reasoning_content;
     }
 
     public List<ToolCall> getTool_calls() {

@@ -2,21 +2,12 @@ package com.jiyingda.codly.command;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import com.jiyingda.codly.data.ChatRequest;
 import com.jiyingda.codly.data.Message;
-import com.jiyingda.codly.util.HttpClientUtil;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.Command;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +23,6 @@ import java.util.List;
 public class GenSkillCommand implements Runnable, CliCommand {
 
     private static final Logger logger = LoggerFactory.getLogger(GenSkillCommand.class);
-    private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
 
     private static final String SHOULD_GEN_PROMPT = """
         你是一个判断助手。根据下面的对话内容，判断是否适合生成一个 skill（可复用的命令/技能）。
@@ -92,7 +82,7 @@ public class GenSkillCommand implements Runnable, CliCommand {
         System.out.println("正在分析最近的对话...");
 
         // Step 1: 判断是否可以生成 skill
-        String decisionJson = callLlm(ctx, buildConversationContext(memory), SHOULD_GEN_PROMPT, false);
+        String decisionJson = callLlm(ctx, buildConversationContext(memory), SHOULD_GEN_PROMPT);
         if (decisionJson == null || decisionJson.isBlank()) {
             System.out.println("分析失败，无法判断是否生成 skill");
             return false;
@@ -121,7 +111,7 @@ public class GenSkillCommand implements Runnable, CliCommand {
         System.out.println("正在生成 skill...");
 
         // Step 2: 生成 skill 内容
-        String skillContent = callLlm(ctx, buildConversationContext(memory), GEN_SKILL_PROMPT, true);
+        String skillContent = callLlm(ctx, buildConversationContext(memory), GEN_SKILL_PROMPT);
         if (skillContent == null || skillContent.isBlank()) {
             System.out.println("skill 生成失败");
             return false;
@@ -160,93 +150,13 @@ public class GenSkillCommand implements Runnable, CliCommand {
     }
 
     /**
-     * 调用 LLM 获取回复。
+     * 调用当前 provider 的 LLM 获取回复（非流式、无工具、关闭思考）。
      */
-    private String callLlm(CommandContext ctx, String conversationContext, String systemPrompt, boolean stream) {
-        try {
-            String apiKey = com.jiyingda.codly.config.Config.getApiKeySafe();
-            String apiUrl = com.jiyingda.codly.config.Config.getApiUrlSafe();
-            String model = ctx.getLlmClient().getModel();
-
-            List<Message> messages = new ArrayList<>();
-            messages.add(Message.fromSystem(systemPrompt));
-            messages.add(Message.fromUser(conversationContext));
-
-            ChatRequest req = new ChatRequest();
-            req.setModel(stream ? model : "qwen-turbo");
-            req.setStream(stream);
-            req.setTemperature(stream ? 0.7 : 0.3);
-            req.setEnable_thinking(false);
-            req.setResult_format("message");
-            req.setMessages(messages);
-
-            String jsonBody = JSON.toJSONString(req);
-            logger.info("gen-skill LLM请求: model={}, apiUrl={}", req.getModel(), apiUrl);
-
-            Request request = new Request.Builder()
-                .url(apiUrl)
-                .addHeader("Authorization", "Bearer " + apiKey)
-                .addHeader("Content-Type", "application/json")
-                .post(RequestBody.create(jsonBody, JSON_MEDIA_TYPE))
-                .build();
-
-            OkHttpClient client = HttpClientUtil.createOptimizedHttpClient();
-
-            if (stream) {
-                return callLlmStream(client, request);
-            } else {
-                return callLlmSync(client, request);
-            }
-        } catch (Exception e) {
-            logger.error("gen-skill LLM调用失败: {}", e.getMessage(), e);
-            return null;
-        }
-    }
-
-    private String callLlmSync(OkHttpClient client, Request request) throws IOException {
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) {
-                logger.error("gen-skill 同步请求失败: {}", response.code());
-                return null;
-            }
-            String body = response.body().string();
-            logger.info("gen-skill 同步响应: {}", body);
-            JSONObject json = JSON.parseObject(body);
-            return json
-                .getJSONArray("choices")
-                .getJSONObject(0)
-                .getJSONObject("message")
-                .getString("content");
-        }
-    }
-
-    private String callLlmStream(OkHttpClient client, Request request) throws IOException {
-        StringBuilder fullContent = new StringBuilder();
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) {
-                logger.error("gen-skill 流式请求失败: {}", response.code());
-                return null;
-            }
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body().byteStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (!line.startsWith("data: ")) continue;
-                    String data = line.substring(6).trim();
-                    if ("[DONE]".equals(data)) break;
-                    JSONObject json = JSON.parseObject(data);
-                    var choices = json.getJSONArray("choices");
-                    if (choices == null || choices.isEmpty()) continue;
-                    var delta = choices.getJSONObject(0).getJSONObject("delta");
-                    if (delta == null) continue;
-                    String content = delta.getString("content");
-                    if (content != null && !content.isEmpty()) {
-                        fullContent.append(content);
-                    }
-                }
-            }
-        }
-        logger.info("gen-skill 流式响应长度: {}", fullContent.length());
-        return fullContent.toString();
+    private String callLlm(CommandContext ctx, String conversationContext, String systemPrompt) {
+        List<Message> messages = new ArrayList<>();
+        messages.add(Message.fromSystem(systemPrompt));
+        messages.add(Message.fromUser(conversationContext));
+        return ctx.getLlmClient().complete(messages);
     }
 
     /**

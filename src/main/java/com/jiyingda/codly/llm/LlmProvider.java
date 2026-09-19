@@ -45,6 +45,14 @@ public interface LlmProvider {
     String chat(CommandContext ctx, List<Message> messages, Consumer<String> onToken);
 
     /**
+     * 发起一次非流式补全，不带工具、关闭思考，供标题生成等内部任务使用。
+     *
+     * @param messages 消息列表
+     * @return 模型回复文本，失败返回 null
+     */
+    String complete(List<Message> messages);
+
+    /**
      * 根据首轮对话内容异步生成一个简短标题。
      *
      * @param userMessage 用户首条消息

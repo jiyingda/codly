@@ -1,5 +1,6 @@
 package com.jiyingda.codly;
 
+import com.jiyingda.codly.llm.AbstractLlmClient;
 import com.jiyingda.codly.util.MarkdownRenderer;
 import com.jiyingda.codly.util.ProgressIndicator;
 import com.jiyingda.codly.util.TokenStats;
@@ -12,6 +13,9 @@ import java.util.function.Consumer;
  */
 public class ResponseRenderer {
 
+    private static final String RESET = "\033[0m";
+    private static final String DIM_GRAY = "\033[2m\033[90m";
+
     private final TokenStats lastStats = new TokenStats();
 
     /**
@@ -22,6 +26,7 @@ public class ResponseRenderer {
      */
     public String render(Consumer<Consumer<String>> chatInvoker) {
         AtomicBoolean responseStarted = new AtomicBoolean(false);
+        AtomicBoolean reasoningMode = new AtomicBoolean(false);
         StringBuilder fullResponse = new StringBuilder();
         MarkdownRenderer mdRenderer = new MarkdownRenderer();
         TokenStats stats = new TokenStats();
@@ -32,8 +37,8 @@ public class ResponseRenderer {
 
         chatInvoker.accept(token -> {
             // 检测 usage 特殊标记
-            if (token.startsWith("\u0000USAGE:")) {
-                String[] parts = token.substring(7).split(":");
+            if (token.startsWith(AbstractLlmClient.USAGE_PREFIX)) {
+                String[] parts = token.substring(AbstractLlmClient.USAGE_PREFIX.length()).split(":");
                 if (parts.length == 3) {
                     try {
                         stats.setUsage(
@@ -43,6 +48,38 @@ public class ResponseRenderer {
                         );
                     } catch (NumberFormatException ignored) {}
                 }
+                return;
+            }
+            // 思考过程开始：切到灰色输出，思考内容不计入对话正文
+            if (AbstractLlmClient.REASONING_START.equals(token)) {
+                if (responseStarted.compareAndSet(false, true)) {
+                    indicator.stop();
+                    indicator.clear();
+                    System.out.print(">> ");
+                    stats.markFirstToken();
+                }
+                String pending = mdRenderer.flush();
+                if (!pending.isEmpty()) {
+                    System.out.print(pending);
+                }
+                System.out.print(DIM_GRAY + "[思考] ");
+                System.out.flush();
+                reasoningMode.set(true);
+                return;
+            }
+            // 思考过程结束
+            if (AbstractLlmClient.REASONING_END.equals(token)) {
+                System.out.print(RESET);
+                System.out.println();
+                System.out.flush();
+                reasoningMode.set(false);
+                return;
+            }
+            // 思考内容：原样灰色输出，不经过 Markdown 渲染
+            if (reasoningMode.get()) {
+                stats.incrementTokens();
+                System.out.print(token);
+                System.out.flush();
                 return;
             }
             if (responseStarted.compareAndSet(false, true)) {
@@ -63,6 +100,10 @@ public class ResponseRenderer {
 
         indicator.stop();
 
+        if (reasoningMode.get()) {
+            System.out.print(RESET);
+            System.out.println();
+        }
         if (!responseStarted.get()) {
             indicator.clear();
             System.out.print(">> ");

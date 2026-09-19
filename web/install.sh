@@ -134,6 +134,7 @@ create_config() {
 
     cat > "$CONFIG_FILE" << 'EOF'
 {
+  "provider": "qwen",
   "apiKey": "your-api-key-here",
   "apiUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
   "enableThinking": true,
@@ -147,7 +148,17 @@ create_config() {
     "glm-4.7",
     "kimi-k2.5",
     "MiniMax-M2.5"
-  ]
+  ],
+  "deepseek": {
+    "apiKey": "sk-your-deepseek-key",
+    "apiUrl": "https://api.deepseek.com/chat/completions",
+    "model": "deepseek-flash",
+    "availableModels": [
+      "deepseek-flash",
+      "deepseek-v4-pro"
+    ],
+    "reasoningEffort": "high"
+  }
 }
 EOF
     print_info "配置文件已创建：$CONFIG_FILE"

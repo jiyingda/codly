@@ -34,19 +34,41 @@ Codly 是一个终端里的 AI 编程助手（CLI），支持对话式编程和�
 mkdir -p ~/.codly
 cat > ~/.codly/settings.json << 'EOF'
 {
+  "provider": "qwen",
   "apiKey": "your-api-key-here",
   "apiUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
   "enableThinking": true,
-  "defaultModel": "qwen3.5-plus"
+  "defaultModel": "qwen3.5-plus",
+  "availableModels": ["qwen3.5-plus", "qwen3-coder-plus"],
+  "deepseek": {
+    "apiKey": "sk-your-deepseek-key",
+    "model": "deepseek-flash",
+    "reasoningEffort": "high"
+  }
 }
 EOF
 ```
 
 配置说明：
-- `apiKey` **必需** - 通义千问 API Key
-- `apiUrl` 可选 - API 端点地址（默认通义千问）
-- `enableThinking` 可选 - 是否启用深度思考（默认 true）
-- `defaultModel` **必需** - 默认使用的模型
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `provider` | 否 | 当前使用的 provider：`qwen`（默认）或 `deepseek` |
+| `apiKey` | provider=qwen 时必填 | 通义千问 API Key |
+| `apiUrl` | 否 | 千问 API 端点地址 |
+| `defaultModel` | provider=qwen 时必填 | 千问默认模型 |
+| `availableModels` | 否 | 千问可选模型列表，供 `/model` 切换 |
+| `enableThinking` | 否 | 是否启用深度思考，对两个 provider 都生效（默认 false） |
+| `deepseek.apiKey` | provider=deepseek 时必填 | DeepSeek API Key |
+| `deepseek.apiUrl` | 否 | 默认 `https://api.deepseek.com/chat/completions` |
+| `deepseek.model` | 否 | 默认 `deepseek-flash` |
+| `deepseek.availableModels` | 否 | 默认 `["deepseek-flash", "deepseek-v4-pro"]` |
+| `deepseek.reasoningEffort` | 否 | 思考强度：`none` / `low` / `high` / `max`，启用思考时生效（默认 `high`） |
+
+### 切换到 DeepSeek
+
+把 `provider` 改为 `deepseek`，并填好 `deepseek.apiKey`，重启即可。`/model` 只在当前 provider 的模型列表内切换。
+启用思考时（`enableThinking: true`）思考过程会以灰色输出，且不会写入对话记忆。
 
 ### 3. 构建
 ```bash
