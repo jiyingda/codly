@@ -6,6 +6,7 @@
  */
 package com.jiyingda.codly;
 
+import com.jiyingda.codly.command.CommandCompleter;
 import com.jiyingda.codly.command.CommandContext;
 import com.jiyingda.codly.command.CommandDispatcher;
 import com.jiyingda.codly.command.CommandDispatcher.DispatchResult;
@@ -84,9 +85,12 @@ public class CodlyMain {
             ctx.setTerminal(terminal);
             SystemInfoManager.getInstance().setTerminal(terminal);
 
+            CommandCompleter completer = new CommandCompleter();
             LineReader reader = LineReaderBuilder.builder()
                     .terminal(terminal)
+                    .completer(completer)
                     .build();
+            completer.install(reader);
             reader.getKeyMaps().get(LineReader.MAIN)
                     .bind(new Reference(LineReader.KILL_WHOLE_LINE), "^U");
 
