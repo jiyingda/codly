@@ -8,7 +8,7 @@ package com.jiyingda.codly.function;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
 import com.jiyingda.codly.data.Parameters;
 
 import java.io.IOException;
@@ -72,7 +72,7 @@ public class WriteFileFunctionCall implements FunctionCallApi {
     }
 
     @Override
-    public String execute(String argsJson, CommandContext ctx) {
+    public String execute(String argsJson, ConversationContext ctx) {
         try {
             Map<String, Object> args = JSON.parseObject(argsJson, new TypeReference<>() {});
             String filePath = args == null ? null : asString(args.get("filePath"));

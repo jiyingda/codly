@@ -13,7 +13,7 @@ package com.jiyingda.codly.data;
 public class Function {
     private String name;
     private String description;
-    private Parameters parameters;
+    private Object parameters;
 
     public String getName() {
         return name;
@@ -31,11 +31,11 @@ public class Function {
         this.description = description;
     }
 
-    public Parameters getParameters() {
+    public Object getParameters() {
         return parameters;
     }
 
-    public void setParameters(Parameters parameters) {
+    public void setParameters(Object parameters) {
         this.parameters = parameters;
     }
 }

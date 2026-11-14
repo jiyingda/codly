@@ -5,7 +5,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import com.alibaba.fastjson.serializer.SerializerFeature;
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
 import com.jiyingda.codly.data.Parameters;
 import com.jiyingda.codly.knowledge.KnowledgeRepository;
 import com.jiyingda.codly.knowledge.KnowledgeSearcher;
@@ -44,7 +44,7 @@ public class KbSearchFunctionCall implements FunctionCallApi {
     }
 
     @Override
-    public String execute(String argsJson, CommandContext ctx) {
+    public String execute(String argsJson, ConversationContext ctx) {
         try {
             Map<String, Object> args = JSON.parseObject(argsJson, new TypeReference<>() {});
             if (args == null) {

@@ -6,7 +6,7 @@
  */
 package com.jiyingda.codly.function;
 
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
 import com.jiyingda.codly.data.Parameters;
 
 /**
@@ -37,13 +37,16 @@ public interface FunctionCallApi {
      */
     Parameters getParameters();
 
+    /** 外部工具保留完整 JSON Schema，包括数组、嵌套对象、枚举和组合约束。 */
+    default Object getParameterSchema() { return getParameters(); }
+
     /**
      * 执行函数
      *
      * @param argsJson 函数参数（JSON 格式）
      * @return 执行结果
      */
-    String execute(String argsJson, CommandContext ctx);
+    String execute(String argsJson, ConversationContext ctx);
 
     /**
      * 是否需要用户二次确认才能执行（写操作、危险操作应返回 true）

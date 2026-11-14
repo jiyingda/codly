@@ -7,7 +7,7 @@
 package com.jiyingda.codly.function;
 
 import com.alibaba.fastjson.JSON;
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
 import com.jiyingda.codly.config.Config;
 import com.jiyingda.codly.data.Parameters;
 import com.jiyingda.codly.data.Property;
@@ -64,7 +64,7 @@ public class WebSearchFunctionCall implements FunctionCallApi {
     }
 
     @Override
-    public String execute(String argsJson, CommandContext ctx) {
+    public String execute(String argsJson, ConversationContext ctx) {
         try {
             Map<String, Object> args = JSON.parseObject(argsJson, Map.class);
             String query = (String) args.get("query");

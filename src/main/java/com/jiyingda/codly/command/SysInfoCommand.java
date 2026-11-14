@@ -19,7 +19,7 @@ public class SysInfoCommand implements Runnable, CliCommand {
 
     @Override
     public boolean execute(CommandContext ctx) {
-        SystemInfoManager mgr = SystemInfoManager.getInstance();
+        SystemInfoManager mgr = ctx.getSystemInfo();
         if ("refresh".equalsIgnoreCase(arg.trim())) {
             mgr.refresh();
             System.out.println("系统信息已重新采集。");

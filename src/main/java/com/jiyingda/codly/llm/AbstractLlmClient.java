@@ -3,7 +3,10 @@ package com.jiyingda.codly.llm;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
+import com.jiyingda.codly.core.CancellationToken;
+import com.jiyingda.codly.core.ToolEvent;
+import com.jiyingda.codly.core.TraceEvent;
 import com.jiyingda.codly.config.Config;
 import com.jiyingda.codly.config.ConfigException;
 import com.jiyingda.codly.data.FunctionCall;
@@ -15,6 +18,7 @@ import com.jiyingda.codly.data.ToolCall;
 import com.jiyingda.codly.function.FunctionManager;
 import com.jiyingda.codly.prompt.SystemPrompt;
 import com.jiyingda.codly.util.HttpClientUtil;
+import okhttp3.Call;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -57,7 +61,8 @@ public abstract class AbstractLlmClient implements LlmProvider {
     protected final String apiKey;
     protected final OkHttpClient httpClient;
     protected final FunctionManager functionManager;
-    protected final boolean enableThinking;
+    @Override public void close() { functionManager.close(); }
+    protected volatile ThinkingDepth thinkingDepth;
     protected String model;
 
     protected AbstractLlmClient(String apiUrl, String apiKey, String model, boolean enableThinking) {
@@ -66,7 +71,7 @@ public abstract class AbstractLlmClient implements LlmProvider {
         this.httpClient = HttpClientUtil.createOptimizedHttpClient();
         this.functionManager = new FunctionManager();
         this.model = model;
-        this.enableThinking = enableThinking;
+        this.thinkingDepth = enableThinking ? ThinkingDepth.HIGH : ThinkingDepth.OFF;
     }
 
     /**
@@ -89,8 +94,12 @@ public abstract class AbstractLlmClient implements LlmProvider {
         this.model = model;
     }
 
+    @Override public ThinkingDepth getThinkingDepth() { return thinkingDepth; }
+    @Override public void setThinkingDepth(ThinkingDepth depth) { thinkingDepth = java.util.Objects.requireNonNull(depth); }
+    @Override public boolean supportsThinkingDepth() { return true; }
+
     @Override
-    public String chat(CommandContext ctx, Consumer<String> onToken) {
+    public String chat(ConversationContext ctx, Consumer<String> onToken) {
         List<Message> messages = new ArrayList<>();
         messages.add(ctx.getSystemPrompt());
         messages.addAll(ctx.getMemory());
@@ -98,24 +107,36 @@ public abstract class AbstractLlmClient implements LlmProvider {
     }
 
     @Override
-    public String chat(CommandContext ctx, List<Message> messages, Consumer<String> onToken) {
+    public String chat(ConversationContext ctx, List<Message> messages, Consumer<String> onToken) {
         return doChat(ctx, messages, onToken);
     }
 
     @Override
     public String complete(List<Message> messages) {
+        return complete(messages, null, "辅助模型请求");
+    }
+
+    @Override
+    public String complete(List<Message> messages, Consumer<TraceEvent> trace, String purpose) {
         String jsonBody = buildSimpleRequestBody(messages);
+        String id = TraceEvent.newId();
+        trace(trace, TraceEvent.of(id, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.START, purpose + " · " + model, requestDetails(messages, jsonBody)));
         logger.info("同步补全请求入参: model={}, apiUrl={}, jsonBody={}", model, apiUrl, jsonBody);
 
         try (Response response = httpClient.newCall(newRequest(jsonBody)).execute()) {
             if (!response.isSuccessful() || response.body() == null) {
-                logger.error("同步补全请求失败：{} - {} - {}", response.code(), response.message(), safeErrorBody(response));
+                String error = safeErrorBody(response);
+                trace(trace, TraceEvent.of(id, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.FAILED, purpose + "失败", "\nHTTP " + response.code() + "\n" + error));
+                logger.error("同步补全请求失败：{} - {} - {}", response.code(), response.message(), error);
                 return null;
             }
             String body = response.body().string();
+            trace(trace, TraceEvent.of(id, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.COMPLETE, purpose + " · " + model, "\nHTTP " + response.code()));
+            trace(trace, TraceEvent.of(TraceEvent.newId(), TraceEvent.Kind.MODEL_RESPONSE, TraceEvent.Phase.COMPLETE, purpose + "响应", pretty(body)));
             logger.info("同步补全请求返回: body={}", body);
             return extractMessageContent(body);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
+            trace(trace, TraceEvent.of(id, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.FAILED, purpose + "失败", "\n" + e.getMessage()));
             logger.error("同步补全请求异常：{}", e.getMessage(), e);
             return null;
         }
@@ -123,22 +144,48 @@ public abstract class AbstractLlmClient implements LlmProvider {
 
     @Override
     public void generateTitleAsync(String userMessage, Consumer<String> onTitle) {
+        generateTitleAsync(userMessage, onTitle, null);
+    }
+
+    @Override
+    public void generateTitleAsync(String userMessage, Consumer<String> onTitle, Consumer<TraceEvent> trace) {
         Thread t = new Thread(() -> {
-            logger.debug("开始生成标题");
+            try {
+                logger.debug("开始生成标题");
 
-            List<Message> messages = List.of(
-                Message.fromSystem(SystemPrompt.GEN_TITLE_PROMPT),
-                Message.fromUser(userMessage)
-            );
+                int end = userMessage.offsetByCodePoints(0, Math.min(4000, userMessage.codePointCount(0, userMessage.length())));
+                List<Message> messages = List.of(
+                    Message.fromSystem(SystemPrompt.GEN_TITLE_PROMPT),
+                    Message.fromUser(userMessage.substring(0, end))
+                );
 
-            String title = complete(messages);
-            if (title != null && !title.isBlank()) {
-                logger.debug("生成标题：{}", title);
-                onTitle.accept(title.trim());
+                String title = complete(messages, trace, "自动命名");
+                if (title != null && !title.isBlank()) {
+                    logger.debug("生成标题：{}", title);
+                    onTitle.accept(title.trim());
+                }
+            } catch (RuntimeException e) {
+                logger.warn("生成对话标题失败，保留临时名称：{}", e.getClass().getSimpleName());
             }
-        });
+        }, "Codly-Conversation-Title");
         t.setDaemon(true);
         t.start();
+    }
+
+    private static void trace(Consumer<TraceEvent> listener, TraceEvent event) { if (listener != null) listener.accept(event); }
+    private static String pretty(String json) {
+        try { return JSON.toJSONString(JSON.parse(json), true); }
+        catch (RuntimeException e) { return json; }
+    }
+
+    private static String requestDetails(List<Message> messages, String json) {
+        StringBuilder details = new StringBuilder();
+        for (Message message : messages) {
+            if ("system".equals(message.getRole()) || "developer".equals(message.getRole())) {
+                details.append("提示词（").append(message.getRole()).append("）\n").append(message.getContent()).append("\n\n");
+            }
+        }
+        return details.append("完整请求体（JSON）\n").append(pretty(json)).toString();
     }
 
     /**
@@ -198,15 +245,23 @@ public abstract class AbstractLlmClient implements LlmProvider {
         }
     }
 
-    private String doChat(CommandContext ctx, List<Message> messages, Consumer<String> onToken) {
+    private String doChat(ConversationContext ctx, List<Message> messages, Consumer<String> onToken) {
         StringBuilder totalContent = new StringBuilder();
         int depth = 0;
 
+        CancellationToken cancellation = ctx.cancellation();
         while (depth < MAX_TOOL_CALL_DEPTH) {
-            if (ctx.shouldQuit()) {
+            if (ctx.shouldQuit() || cancellation.isCancelled()) {
                 break;
             }
+            functionManager.prepareMcp(ctx);
+            if (cancellation.isCancelled()) break;
             String jsonBody = buildChatRequestBody(messages);
+            String requestId = TraceEvent.newId();
+            String thinkingId = TraceEvent.newId();
+            boolean[] thinkingStarted = {false};
+            ctx.emitTrace(TraceEvent.of(requestId, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.START,
+                    "模型请求 " + (depth + 1) + " · " + model, requestDetails(messages, jsonBody)));
             logger.info("大模型请求入参: model={}, apiUrl={}, jsonBody={}", model, apiUrl, jsonBody);
 
             StringBuilder fullContent = new StringBuilder();
@@ -215,21 +270,28 @@ public abstract class AbstractLlmClient implements LlmProvider {
             List<ToolCall> finalToolCalls = new ArrayList<>();
             int[] usageInfo = new int[3]; // [prompt_tokens, completion_tokens, total_tokens]
             boolean reasoningOpen = false;
+            boolean contentRecorded = false;
 
-            try (Response response = httpClient.newCall(newRequest(jsonBody)).execute()) {
+            Call call = httpClient.newCall(newRequest(jsonBody));
+            Runnable cancelRequest = call::cancel;
+            cancellation.register(cancelRequest);
+            try (Response response = call.execute()) {
                 if (!response.isSuccessful()) {
-                    logger.error("请求失败：{} - {} - {}", response.code(), response.message(), safeErrorBody(response));
-                    return totalContent.toString();
+                    String error = safeErrorBody(response);
+                    ctx.emitTrace(TraceEvent.of(requestId, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.APPEND, "模型请求 " + (depth + 1), "\nHTTP " + response.code() + "\n" + error));
+                    logger.error("请求失败：{} - {} - {}", response.code(), response.message(), error);
+                    throw new IllegalStateException("模型请求失败，HTTP " + response.code());
                 }
 
                 ResponseBody body = response.body();
                 if (body == null) {
-                    return totalContent.toString();
+                    throw new IllegalStateException("模型响应为空");
                 }
 
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(body.byteStream()))) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(body.byteStream(), java.nio.charset.StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
+                        if (cancellation.isCancelled()) break;
                         if (!line.startsWith("data: ")) {
                             continue;
                         }
@@ -292,6 +354,9 @@ public abstract class AbstractLlmClient implements LlmProvider {
                         // 处理思考过程（thinking 模式），以哨兵告知调用方进入/退出灰色输出
                         String reasoning = delta.getReasoning_content();
                         if (reasoning != null && !reasoning.isEmpty()) {
+                            ctx.emitTrace(TraceEvent.of(thinkingId, TraceEvent.Kind.THINKING,
+                                    thinkingStarted[0] ? TraceEvent.Phase.APPEND : TraceEvent.Phase.START, "思考过程", reasoning));
+                            thinkingStarted[0] = true;
                             reasoningContent.append(reasoning);
                             if (onToken != null) {
                                 if (!reasoningOpen) {
@@ -331,7 +396,21 @@ public abstract class AbstractLlmClient implements LlmProvider {
                     }
                 }
                 logger.info("本轮请求完成，累计内容长度：{}，待执行工具：{}", fullContent.length(), JSON.toJSONString(finalToolCalls));
+                if (thinkingStarted[0]) ctx.emitTrace(TraceEvent.of(thinkingId, TraceEvent.Kind.THINKING,
+                        cancellation.isCancelled() ? TraceEvent.Phase.CANCELLED : TraceEvent.Phase.COMPLETE, "思考过程", ""));
+                ctx.emitTrace(TraceEvent.of(requestId, TraceEvent.Kind.MODEL_REQUEST,
+                        cancellation.isCancelled() ? TraceEvent.Phase.CANCELLED : TraceEvent.Phase.COMPLETE,
+                        "模型请求 " + (depth + 1) + " · " + model, "\nHTTP " + response.code()));
+                Map<String, Object> resultDetails = new java.util.LinkedHashMap<>();
+                resultDetails.put("content", fullContent.toString());
+                resultDetails.put("tool_calls", finalToolCalls);
+                resultDetails.put("usage", Map.of("prompt_tokens", usageInfo[0], "completion_tokens", usageInfo[1], "total_tokens", usageInfo[2]));
+                ctx.emitTrace(TraceEvent.of(TraceEvent.newId(), TraceEvent.Kind.MODEL_RESPONSE,
+                        cancellation.isCancelled() ? TraceEvent.Phase.CANCELLED : TraceEvent.Phase.COMPLETE,
+                        "模型响应 " + (depth + 1), JSON.toJSONString(resultDetails, true)));
 
+                totalContent.append(fullContent);
+                contentRecorded = true;
                 // 执行所有 tool_calls，收集结果后继续循环
                 if (!finalToolCalls.isEmpty()) {
                     // 先将 assistant 的 tool_calls 回复加入消息列表
@@ -346,7 +425,7 @@ public abstract class AbstractLlmClient implements LlmProvider {
 
                     boolean anyExecuted = false;
                     for (ToolCall toolCall : finalToolCalls) {
-                        if (ctx.shouldQuit()) {
+                        if (ctx.shouldQuit() || cancellation.isCancelled()) {
                             if (onToken != null) {
                                 onToken.accept("\n[收到退出信号，终止工具调用]\n");
                             }
@@ -359,23 +438,35 @@ public abstract class AbstractLlmClient implements LlmProvider {
                         String args = toolCall.getFunction().getArguments();
 
                         if (functionManager.hasFunction(functionName)) {
-                            if (onToken != null) {
+                            ctx.emitTool(new ToolEvent(toolCall.getId(), functionName, args, null, ToolEvent.State.REQUESTED));
+                            if (onToken != null && !ctx.hasToolEvents()) {
                                 onToken.accept("\n[调用 " + functionName + " 工具，参数：" + args + "]\n");
                             }
-                            String result = functionManager.execute(functionName, args, ctx);
-                            if (onToken != null) {
+                            String result;
+                            try {
+                                result = functionManager.execute(functionName, args, ctx);
+                            } catch (RuntimeException e) {
+                                ctx.emitTool(new ToolEvent(toolCall.getId(), functionName, args,
+                                        e.getMessage(), ToolEvent.State.FAILED));
+                                throw e;
+                            }
+                            ctx.emitTool(new ToolEvent(toolCall.getId(), functionName, args, result,
+                                    cancellation.isCancelled() ? ToolEvent.State.CANCELLED : ToolEvent.State.RETURNED));
+                            if (onToken != null && !ctx.hasToolEvents()) {
                                 onToken.accept("[" + functionName + " 结果：" + result + "]\n");
                             }
                             messages.add(Message.fromTool(toolCall.getId(), result));
                             anyExecuted = true;
                         } else {
-                            if (onToken != null) {
+                            ctx.emitTool(new ToolEvent(toolCall.getId(), functionName, args, null, ToolEvent.State.REQUESTED));
+                            ctx.emitTool(new ToolEvent(toolCall.getId(), functionName, args, "未知的函数：" + functionName, ToolEvent.State.FAILED));
+                            if (onToken != null && !ctx.hasToolEvents()) {
                                 onToken.accept("[未知的函数：" + functionName + "]\n");
                             }
                         }
                     }
                     if (anyExecuted) {
-                        if (ctx.shouldQuit()) {
+                        if (ctx.shouldQuit() || cancellation.isCancelled()) {
                             break;
                         }
                         depth++;
@@ -384,13 +475,28 @@ public abstract class AbstractLlmClient implements LlmProvider {
                 }
 
                 // 本轮对话结束（无 tool_call 或工具未找到），返回结果
-                totalContent.append(fullContent.toString());
                 // 传递 usage 信息（通过特殊标记）
                 if (usageInfo[2] > 0 && onToken != null) {
                     onToken.accept(USAGE_PREFIX + usageInfo[0] + ":" + usageInfo[1] + ":" + usageInfo[2]);
                 }
+            } catch (RuntimeException e) {
+                if (!contentRecorded) {
+                    ctx.emitTrace(TraceEvent.of(requestId, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.FAILED, "模型请求 " + (depth + 1), "\n" + e.getMessage()));
+                    if (thinkingStarted[0]) ctx.emitTrace(TraceEvent.of(thinkingId, TraceEvent.Kind.THINKING, TraceEvent.Phase.FAILED, "思考过程", ""));
+                }
+                throw e;
             } catch (IOException e) {
-                logger.error("请求失败：{}", e.getMessage(), e);
+                TraceEvent.Phase phase = cancellation.isCancelled() ? TraceEvent.Phase.CANCELLED : TraceEvent.Phase.FAILED;
+                ctx.emitTrace(TraceEvent.of(requestId, TraceEvent.Kind.MODEL_REQUEST, phase, "模型请求 " + (depth + 1), "\n" + e.getMessage()));
+                if (thinkingStarted[0]) ctx.emitTrace(TraceEvent.of(thinkingId, TraceEvent.Kind.THINKING, phase, "思考过程", ""));
+                if (!contentRecorded && !fullContent.isEmpty()) ctx.emitTrace(TraceEvent.of(TraceEvent.newId(), TraceEvent.Kind.MODEL_RESPONSE, phase, "未完成的模型响应", fullContent.toString()));
+                if (!cancellation.isCancelled()) {
+                    logger.error("请求失败：{}", e.getMessage(), e);
+                    throw new IllegalStateException("模型连接失败：" + e.getMessage(), e);
+                }
+                if (!contentRecorded) totalContent.append(fullContent);
+            } finally {
+                cancellation.unregister(cancelRequest);
             }
             // 请求成功（或异常后），直接返回
             break;

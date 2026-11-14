@@ -82,6 +82,7 @@ public class HttpClientUtil {
                 try {
                     return chain.proceed(request);
                 } catch (IOException e) {
+                    if (chain.call().isCanceled()) throw e;
                     lastException = e;
                     if (i < maxRetry) {
                         logger.info("[重试] 第 {} 次重试 - {}", i + 1, e.getMessage());

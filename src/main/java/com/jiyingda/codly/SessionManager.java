@@ -1,13 +1,14 @@
 package com.jiyingda.codly;
 
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
+import com.jiyingda.codly.core.SessionMemory;
+import com.jiyingda.codly.core.ConversationTitle;
 import com.jiyingda.codly.data.Message;
-import com.jiyingda.codly.llm.LlmProvider;
-import com.jiyingda.codly.memory.MemoryManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -17,21 +18,20 @@ public class SessionManager {
 
     private static final Logger logger = LoggerFactory.getLogger(SessionManager.class);
 
-    private static final String TITLE_ESCAPE_PREFIX = "\033]0;Codly — ";
-    private static final String TITLE_ESCAPE_SUFFIX = "\007";
-
     private final List<Message> memory;
-    private final LlmProvider llmClient;
-    private final MemoryManager memoryManager;
-    private final CommandContext ctx;
+    private final SessionMemory memoryManager;
+    private final ConversationContext ctx;
+    private final Consumer<String> onTitle;
+    private volatile boolean closed;
+    private final java.util.concurrent.atomic.AtomicInteger generation = new java.util.concurrent.atomic.AtomicInteger();
     private final AtomicBoolean titleGenerated = new AtomicBoolean(false);
 
-    public SessionManager(List<Message> memory, LlmProvider llmClient,
-                          MemoryManager memoryManager, CommandContext ctx) {
+    public SessionManager(List<Message> memory, SessionMemory memoryManager,
+                          ConversationContext ctx, Consumer<String> onTitle) {
         this.memory = memory;
-        this.llmClient = llmClient;
         this.memoryManager = memoryManager;
         this.ctx = ctx;
+        this.onTitle = onTitle;
     }
 
     /**
@@ -42,14 +42,16 @@ public class SessionManager {
         memory.add(userMessage);
         memoryManager.appendMessage(userMessage);
 
-        if (!titleGenerated.get()) {
-            llmClient.generateTitleAsync(userInput, title -> {
-                titleGenerated.set(true);
-                String terminalTitle = TITLE_ESCAPE_PREFIX + title + TITLE_ESCAPE_SUFFIX;
-                System.out.print(terminalTitle);
-                System.out.flush();
-                memoryManager.initializeWithSession(title.trim());
-            });
+        // 即使标题请求失败或用户立即退出，也有可刷盘的会话文件。
+        memoryManager.initializeWithSession(userInput.substring(0, Math.min(userInput.length(), 40)));
+        if (titleGenerated.compareAndSet(false, true)) {
+            int currentGeneration = generation.get();
+            ctx.getLlmClient().generateTitleAsync(userInput, title -> {
+                synchronized (SessionManager.this) {
+                    String name = ConversationTitle.fromModel(title);
+                    if (!closed && currentGeneration == generation.get() && name != null) onTitle.accept(name);
+                }
+            }, ctx.traceListener());
         }
     }
 
@@ -70,14 +72,37 @@ public class SessionManager {
     /**
      * 退出时刷盘、提取长期记忆、关闭异步执行器。
      */
-    public void shutdown() {
-        logger.info("SessionManager shutdown 开始...");
+    public synchronized void newConversation() {
         memoryManager.flushNow();
-        memoryManager.flushAndExtractLtmSync(ctx);
-        memoryManager.shutdown();
+        memoryManager.clearSession();
+        ctx.resetMemory();
+        generation.incrementAndGet();
+        titleGenerated.set(false);
     }
 
-    public CommandContext getCommandContext() {
+    public synchronized void restoreConversation(List<Message> messages, String reference) {
+        memoryManager.flushNow();
+        memoryManager.restoreSession(reference, messages);
+        ctx.resetMemory();
+        memory.addAll(messages);
+        generation.incrementAndGet();
+        titleGenerated.set(true);
+    }
+
+    public String getSessionReference() { return memoryManager.getCurrentSessionFile(); }
+
+    public void shutdown() {
+        closed = true;
+        logger.info("SessionManager shutdown 开始...");
+        memoryManager.flushNow();
+        try {
+            memoryManager.flushAndExtractLtmSync(ctx);
+        } finally {
+            memoryManager.shutdown();
+        }
+    }
+
+    public ConversationContext getContext() {
         return ctx;
     }
 }

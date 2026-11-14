@@ -21,13 +21,19 @@ public class QwenLlmClient extends AbstractLlmClient {
     }
 
     public QwenLlmClient(String model) {
-        super(Config.getApiUrlSafe(), requireApiKey(), resolveModel(model), Config.getEnableThinkingSafe());
+        this(Config.getApiUrlSafe(), requireApiKey(), resolveModel(model), Config.getEnableThinkingSafe() ? ThinkingDepth.HIGH : ThinkingDepth.OFF);
+    }
+
+    QwenLlmClient(String url, String key, String model, ThinkingDepth depth) {
+        super(url, key, model, depth.enabled());
+        setThinkingDepth(depth);
     }
 
     @Override
     public List<String> getAvailableModels() {
         return Config.getAvailableModelsSafe();
     }
+    @Override public String providerId() { return Config.PROVIDER_QWEN; }
 
     @Override
     protected String buildChatRequestBody(List<Message> messages) {
@@ -37,8 +43,9 @@ public class QwenLlmClient extends AbstractLlmClient {
         chatRequest.setTop_p(0.5);
         chatRequest.setTemperature(0.5);
         chatRequest.setEnable_search(false);
-        chatRequest.setEnable_thinking(enableThinking);
-        chatRequest.setThinking_budget(4000);
+        ThinkingDepth depth = getThinkingDepth();
+        chatRequest.setEnable_thinking(depth.enabled());
+        if (depth.enabled()) chatRequest.setThinking_budget(depth.budget());
         chatRequest.setResult_format("message");
         chatRequest.setTools(functionManager.getTools());
         chatRequest.setMessages(messages);

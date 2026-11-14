@@ -13,14 +13,10 @@ import com.jiyingda.codly.command.CommandDispatcher.DispatchResult;
 import com.jiyingda.codly.config.Config;
 import com.jiyingda.codly.config.ConfigException;
 import com.jiyingda.codly.constants.Banner;
-import com.jiyingda.codly.data.Message;
-import com.jiyingda.codly.knowledge.KnowledgeRepository;
+import com.jiyingda.codly.core.ChatSession;
+import com.jiyingda.codly.desktop.DesktopMain;
 import com.jiyingda.codly.llm.LlmClient;
 import com.jiyingda.codly.llm.LlmProvider;
-import com.jiyingda.codly.memory.MemoryManager;
-import com.jiyingda.codly.prompt.SystemPrompt;
-import com.jiyingda.codly.skill.SkillRegistry;
-import com.jiyingda.codly.systeminfo.SystemInfoManager;
 import com.jiyingda.codly.util.TerminalUtils;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
@@ -35,7 +31,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Codly 命令行入口，负责初始化和用户交互主循环。
@@ -47,6 +42,10 @@ public class CodlyMain {
     private static final Logger logger = LoggerFactory.getLogger(CodlyMain.class);
 
     public static void main(String[] args) {
+        if (args.length > 0 && "--desktop".equals(args[0])) {
+            DesktopMain.main(java.util.Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         // 禁用 JLine3 JNA provider 弃用警告
         System.setProperty("org.jline.terminal.disableDeprecatedProviderWarning", "true");
 
@@ -67,23 +66,21 @@ public class CodlyMain {
             return;
         }
 
-        List<Message> memory = new ArrayList<>();
-        MemoryManager memoryManager = MemoryManager.getInstance();
-        SkillRegistry.getInstance().load();
-        KnowledgeRepository.getInstance().load();
         Path startupPath = Paths.get("").toAbsolutePath().normalize();
-        CommandContext ctx = new CommandContext(memory, llmClient, startupPath);
-
-        SessionManager session = new SessionManager(memory, llmClient, memoryManager, ctx);
+        CommandContext ctx = new CommandContext(new ArrayList<>(), llmClient, startupPath);
+        ChatSession session = ChatSession.open(ctx, title -> {
+            System.out.print("\033]0;Codly — " + title + "\007");
+            System.out.flush();
+        });
         ResponseRenderer renderer = new ResponseRenderer();
         CommandDispatcher dispatcher = new CommandDispatcher();
 
         printBanner();
         System.out.println("  输入对话内容开始编程，/help 查看可用命令");
 
-        try (Terminal terminal = TerminalUtils.createTerminal()) {
+        try (session; Terminal terminal = TerminalUtils.createTerminal()) {
             ctx.setTerminal(terminal);
-            SystemInfoManager.getInstance().setTerminal(terminal);
+            ctx.getSystemInfo().setTerminal(terminal);
 
             CommandCompleter completer = new CommandCompleter();
             LineReader reader = LineReaderBuilder.builder()
@@ -100,11 +97,9 @@ public class CodlyMain {
                     line = reader.readLine("> ");
                 } catch (UserInterruptException e) {
                     logger.info("用户中断，等待异步任务完成...");
-                    session.shutdown();
                     return;
                 } catch (EndOfFileException e) {
                     logger.info("检测到 EOF，等待异步任务完成...");
-                    session.shutdown();
                     return;
                 }
                 if (line.trim().isEmpty()) {
@@ -114,7 +109,6 @@ public class CodlyMain {
                 DispatchResult result = dispatcher.dispatch(line, ctx);
                 if (result == DispatchResult.QUIT) {
                     logger.info("用户退出，等待异步任务完成...");
-                    session.shutdown();
                     return;
                 } else if (result == DispatchResult.HANDLED) {
                     continue;
@@ -125,20 +119,11 @@ public class CodlyMain {
                     continue;
                 }
 
-                session.handleUserMessage(line);
-
-                String longTermMemory = memoryManager.toLongTermPromptSection();
-                String skillCatalog = SkillRegistry.getInstance().toCatalogSection();
-                String activeSkills = ctx.activeSkillsPromptSection();
-                String knowledgeCatalog = KnowledgeRepository.getInstance().toCatalogSection();
-                ctx.setSystemPrompt(Message.fromSystem(
-                        SystemPrompt.SOUL_PROMPT + skillCatalog + activeSkills + longTermMemory
-                                + knowledgeCatalog
-                                + "\n\n" + SystemInfoManager.getInstance().currentTime()));
-
-                String res = renderer.render(onToken -> llmClient.chat(ctx, onToken));
-
-                session.handleAssistantResponse(res, line);
+                try {
+                    renderer.render(onToken -> session.send(line, onToken));
+                } catch (RuntimeException e) {
+                    System.err.println("请求失败：" + e.getMessage());
+                }
             }
         } catch (IOException e) {
             System.err.println("Error: " + e.getMessage());

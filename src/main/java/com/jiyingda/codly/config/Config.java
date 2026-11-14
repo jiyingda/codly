@@ -43,16 +43,26 @@ public class Config {
     private String deepseekReasoningEffort;
     private List<String> deepseekAvailableModels;
 
+    private JSONObject skills;
+    private JSONObject mcpServers;
+
     private boolean configLoaded = false;
     private String loadError = null;
 
     private static Config instance;
 
+    private final java.nio.file.Path configPath;
+
     private Config() {
+        this(Paths.get(CONFIG_PATH));
+    }
+
+    Config(java.nio.file.Path configPath) {
+        this.configPath = configPath;
         load();
     }
 
-    public static Config getInstance() {
+    public static synchronized Config getInstance() {
         if (instance == null) {
             instance = new Config();
         }
@@ -62,8 +72,10 @@ public class Config {
     /**
      * 重新加载配置
      */
-    public void load() {
-        File configFile = new File(CONFIG_PATH);
+    public synchronized void load() {
+        this.configLoaded = false;
+        this.mcpServers = null;
+        File configFile = configPath.toFile();
         if (!configFile.exists()) {
             this.loadError = "配置文件不存在";
             this.configLoaded = false;
@@ -71,32 +83,39 @@ public class Config {
         }
 
         try {
-            String content = Files.readString(Paths.get(CONFIG_PATH));
+            String content = Files.readString(configPath);
             JSONObject json = JSON.parseObject(content);
-            if (json != null) {
-                this.provider = json.getString("provider");
-                this.apiKey = json.getString("apiKey");
-                this.iqsApiKey = json.getString("iqsApiKey");
-                this.enableThinking = json.getBoolean("enableThinking");
-                this.defaultModel = json.getString("defaultModel");
-                this.availableModels = json.getJSONArray("availableModels")
-                    != null ? json.getJSONArray("availableModels").toJavaList(String.class) : null;
-                this.apiUrl = json.getString("apiUrl");
+            if (json == null) throw new IllegalArgumentException();
+            this.provider = json.getString("provider");
+            this.apiKey = json.getString("apiKey");
+            this.iqsApiKey = json.getString("iqsApiKey");
+            this.enableThinking = json.getBoolean("enableThinking");
+            this.defaultModel = json.getString("defaultModel");
+            this.availableModels = json.getJSONArray("availableModels")
+                != null ? json.getJSONArray("availableModels").toJavaList(String.class) : null;
+            this.apiUrl = json.getString("apiUrl");
 
-                JSONObject deepseek = json.getJSONObject("deepseek");
-                if (deepseek != null) {
-                    this.deepseekApiKey = deepseek.getString("apiKey");
-                    this.deepseekApiUrl = deepseek.getString("apiUrl");
-                    this.deepseekModel = deepseek.getString("model");
-                    this.deepseekReasoningEffort = deepseek.getString("reasoningEffort");
-                    this.deepseekAvailableModels = deepseek.getJSONArray("availableModels")
-                        != null ? deepseek.getJSONArray("availableModels").toJavaList(String.class) : null;
-                }
+            this.skills = json.getJSONObject("skills");
+            SettingsStore.validateMcp(json.get("mcpServers"));
+            this.mcpServers = json.getJSONObject("mcpServers");
+            this.deepseekApiKey = null;
+            this.deepseekApiUrl = null;
+            this.deepseekModel = null;
+            this.deepseekReasoningEffort = null;
+            this.deepseekAvailableModels = null;
+            JSONObject deepseek = json.getJSONObject("deepseek");
+            if (deepseek != null) {
+                this.deepseekApiKey = deepseek.getString("apiKey");
+                this.deepseekApiUrl = deepseek.getString("apiUrl");
+                this.deepseekModel = deepseek.getString("model");
+                this.deepseekReasoningEffort = deepseek.getString("reasoningEffort");
+                this.deepseekAvailableModels = deepseek.getJSONArray("availableModels")
+                    != null ? deepseek.getJSONArray("availableModels").toJavaList(String.class) : null;
             }
             this.configLoaded = true;
             this.loadError = null;
-        } catch (IOException e) {
-            this.loadError = "读取配置文件失败：" + e.getMessage();
+        } catch (IOException | RuntimeException e) {
+            this.loadError = "配置文件无法读取或 JSON 格式不正确，请检查 " + configPath;
             this.configLoaded = false;
         }
     }
@@ -314,8 +333,28 @@ public class Config {
     /**
      * 获取配置文件路径
      */
+    public static List<String> getSkillDirectories() {
+        JSONObject skills = getInstance().skills;
+        return skills == null || skills.getJSONArray("directories") == null ? List.of()
+                : skills.getJSONArray("directories").toJavaList(String.class);
+    }
+
+    public static List<String> getEnabledSkills() {
+        JSONObject skills = getInstance().skills;
+        return skills == null || skills.getJSONArray("enabled") == null ? List.of()
+                : skills.getJSONArray("enabled").toJavaList(String.class);
+    }
+
     public static String getConfigPath() {
         return CONFIG_PATH;
+    }
+
+    public static JSONObject getMcpServers() {
+        Config config = getInstance();
+        synchronized (config) {
+            return !config.configLoaded || config.mcpServers == null ? new JSONObject()
+                    : JSON.parseObject(JSON.toJSONString(config.mcpServers));
+        }
     }
 
     public static void printLoadErr(Config config, Consumer<String> out) {

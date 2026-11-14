@@ -1,6 +1,5 @@
 package com.jiyingda.codly.command;
 
-import com.jiyingda.codly.function.UserConfirmation;
 import com.jiyingda.codly.knowledge.IndexMdWriter;
 import com.jiyingda.codly.knowledge.KnowledgePack;
 import com.jiyingda.codly.knowledge.KnowledgeRepository;
@@ -165,7 +164,7 @@ public class KbCommand implements Runnable, CliCommand {
             System.out.println("未找到知识包：" + name);
             return;
         }
-        boolean allowed = UserConfirmation.confirm(ctx.getTerminal(),
+        boolean allowed = ctx.confirm(
                 "删除知识包 " + name + "（" + pack.get().getDir() + "）？");
         if (!allowed) {
             System.out.println("已取消");

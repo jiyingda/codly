@@ -20,7 +20,7 @@ public class ChatRequest {
     private double temperature;
     private boolean enable_search;
     private boolean enable_thinking;
-    private int thinking_budget;
+    private Integer thinking_budget;
     private String result_format;
     private List<Tool> tools;
     private StreamOptions stream_options;
@@ -81,11 +81,11 @@ public class ChatRequest {
         this.enable_thinking = enable_thinking;
     }
 
-    public int getThinking_budget() {
+    public Integer getThinking_budget() {
         return thinking_budget;
     }
 
-    public void setThinking_budget(int thinking_budget) {
+    public void setThinking_budget(Integer thinking_budget) {
         this.thinking_budget = thinking_budget;
     }
 

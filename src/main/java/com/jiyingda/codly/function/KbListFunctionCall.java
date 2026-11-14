@@ -4,7 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.serializer.SerializerFeature;
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
 import com.jiyingda.codly.data.Parameters;
 import com.jiyingda.codly.knowledge.KnowledgePack;
 import com.jiyingda.codly.knowledge.KnowledgeRepository;
@@ -36,7 +36,7 @@ public class KbListFunctionCall implements FunctionCallApi {
     }
 
     @Override
-    public String execute(String argsJson, CommandContext ctx) {
+    public String execute(String argsJson, ConversationContext ctx) {
         List<KnowledgePack> packs = KnowledgeRepository.getInstance().all();
         if (packs.isEmpty()) {
             return "（暂无已加载的知识包，可让用户用 /kb scaffold <name> \"<system>\" 生成）";

@@ -25,10 +25,10 @@ import java.util.Map;
  * 交互方式：
  * <ul>
  *   <li>逐字符输入 —— 光标处于命令位置时自动列出候选（带描述，按「命令 / Skills」分组），并随输入收窄</li>
- *   <li>Tab —— 立即进入 JLine 原生高亮菜单：↑↓ 移动选择，Tab 跳到下一个，Enter 接受整行；
+ *   <li>↑↓ 或 Tab —— 直接进入 JLine 原生高亮菜单：↑↓ 移动选择，Tab 跳到下一个，Enter 确认候选；
  *       若当前前缀只匹配一项，则直接补全并补一个空格</li>
  * </ul>
- * 候选只在「当前 token 以 / 开头」时给出，因此普通对话输入不会被打扰。
+ * 候选只在行首的斜杠命令位置给出，因此普通对话输入不会被打扰。
  */
 public class CommandCompleter implements Completer {
 
@@ -50,18 +50,19 @@ public class CommandCompleter implements Completer {
             return;
         }
         String word = line.word();
-        if (word == null || !word.startsWith("/")) {
+        if (word == null || !word.startsWith("/") || !isCommandToken(line.line())) {
             return;
         }
         candidates.addAll(candidatesFor(word));
     }
 
     /**
-     * 在 LineReader 上启用补全：逐字符输入自动列出候选，Tab 进入可上下选择的高亮菜单。
+     * 在 LineReader 上启用补全：逐字符输入自动列出候选，上下键或 Tab 直接选择。
      * 需在 reader 构建完成、且已通过 builder 设置本 completer 之后调用。
      */
     public void install(LineReader reader) {
         reader.option(LineReader.Option.AUTO_GROUP, true);
+        reader.option(LineReader.Option.AUTO_MENU_LIST, true);
 
         reader.getWidgets().put(AUTO_LIST_WIDGET, () -> {
             reader.callWidget(LineReader.SELF_INSERT);
@@ -76,6 +77,8 @@ public class CommandCompleter implements Completer {
         }
 
         bindTabToMenuComplete(main);
+        bindCandidateNavigation(reader, main);
+        bindEditingRefresh(reader, main);
 
         // 可见字符默认绑定为 self-insert，接管它们等价于在原有行为上追加一次候选刷新；
         // Tab（现在被改绑为 menu-complete）等有实际含义的绑定必须保留。
@@ -96,12 +99,60 @@ public class CommandCompleter implements Completer {
         logger.info("斜杠命令自动补全已启用（接管 {} 个按键）", bound);
     }
 
+    private void bindCandidateNavigation(LineReader reader, KeyMap<Binding> main) {
+        KeyMap<Binding> menu = reader.getKeyMaps().get(LineReader.MENU);
+        // 保留原有历史导航；只有正在编辑斜杠命令且存在候选时才进入菜单。
+        for (String name : List.of(LineReader.UP_LINE_OR_HISTORY, LineReader.DOWN_LINE_OR_HISTORY,
+                LineReader.UP_LINE_OR_SEARCH, LineReader.DOWN_LINE_OR_SEARCH)) {
+            String widget = "codly-candidates-" + name;
+            reader.getWidgets().put(widget, () -> {
+                Buffer buffer = reader.getBuffer();
+                if (buffer.cursor() == buffer.length() && isCommandToken(buffer.toString())
+                        && !candidatesFor(buffer.toString()).isEmpty()) {
+                    reader.callWidget(LineReader.MENU_COMPLETE);
+                } else {
+                    reader.callWidget(name);
+                }
+                return true;
+            });
+            rebind(main, name, widget);
+            if (menu != null) {
+                // 原生菜单默认按网格行跳转；单行多列时上下键不会换项。
+                // 始终按候选顺序前后移动，使窄屏和宽屏的选择行为一致。
+                boolean up = name.equals(LineReader.UP_LINE_OR_HISTORY)
+                        || name.equals(LineReader.UP_LINE_OR_SEARCH);
+                rebind(menu, name, up ? LineReader.REVERSE_MENU_COMPLETE : LineReader.MENU_COMPLETE);
+            }
+        }
+    }
+
+    private void bindEditingRefresh(LineReader reader, KeyMap<Binding> main) {
+        for (String name : List.of(LineReader.BACKWARD_DELETE_CHAR, LineReader.DELETE_CHAR)) {
+            String widget = "codly-refresh-" + name;
+            reader.getWidgets().put(widget, () -> {
+                reader.callWidget(name);
+                refreshCandidates(reader);
+                return true;
+            });
+            rebind(main, name, widget);
+        }
+    }
+
+    private static void rebind(KeyMap<Binding> keyMap, String original, String replacement) {
+        // 遍历快照，避免 bind 修改原映射时影响迭代。
+        for (Map.Entry<String, Binding> entry : new ArrayList<>(keyMap.getBoundKeys().entrySet())) {
+            if (entry.getValue() instanceof Reference ref && original.equals(ref.name())) {
+                keyMap.bind(new Reference(replacement), entry.getKey());
+            }
+        }
+    }
+
     /**
      * 把 Tab 从 expand-or-complete 改绑为 menu-complete。
      * <p>
      * expand-or-complete 在候选多于一个时只把候选「列」出来，不进菜单，此时按 ↑↓ 毫无反应；
      * menu-complete 一次按下就进入带高亮的原生菜单，↑↓ 可移动选择，Tab 继续下一个，
-     * Enter 接受整行。唯一匹配时它同样直接补全。
+     * Enter 确认候选，再次 Enter 提交。唯一匹配时它同样直接补全。
      */
     private static void bindTabToMenuComplete(KeyMap<Binding> main) {
         List<String> tabKeys = new ArrayList<>();
@@ -179,7 +230,7 @@ public class CommandCompleter implements Completer {
         try {
             Buffer buffer = reader.getBuffer();
             String before = buffer.upToCursor();
-            if (!isCommandToken(before)) {
+            if (buffer.cursor() != buffer.length() || !isCommandToken(buffer.toString())) {
                 return;
             }
             ParsedLine parsed = reader.getParser().parse(before, before.length(), Parser.ParseContext.COMPLETE);

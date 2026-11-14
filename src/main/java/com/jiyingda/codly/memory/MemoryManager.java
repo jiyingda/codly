@@ -3,7 +3,8 @@ package com.jiyingda.codly.memory;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
+import com.jiyingda.codly.core.SessionMemory;
 import com.jiyingda.codly.data.Message;
 import com.jiyingda.codly.prompt.SystemPrompt;
 import org.slf4j.Logger;
@@ -28,7 +29,7 @@ import java.util.concurrent.Executors;
  * 存储格式：每行一条 JSON 记录，直接追加到文件尾部
  * 消息先暂存到内存缓存，每 FLUSH_THRESHOLD 轮对话批量写入磁盘
  */
-public class MemoryManager {
+public class MemoryManager implements SessionMemory {
 
     private static final Logger logger = LoggerFactory.getLogger(MemoryManager.class);
 
@@ -166,6 +167,7 @@ public class MemoryManager {
         }
         logger.debug("批量写入 {} 条消息到磁盘, resetRounds={}", toWrite.size(), resetRounds);
 
+        String sessionFile = currentSessionFile;
         CompletableFuture.runAsync(() -> {
             try {
                 StringBuilder sb = new StringBuilder();
@@ -181,9 +183,9 @@ public class MemoryManager {
                     }
                     sb.append(json.toJSONString()).append("\n");
                 }
-                Files.writeString(Paths.get(currentSessionFile), sb.toString(),
+                Files.writeString(Paths.get(sessionFile), sb.toString(),
                         StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-                logger.info("批量写入成功：{} 条消息 -> {}", toWrite.size(), currentSessionFile);
+                logger.info("批量写入成功：{} 条消息 -> {}", toWrite.size(), sessionFile);
             } catch (IOException e) {
                 logger.error("批量写入失败：{}", e.getMessage(), e);
             }
@@ -213,6 +215,23 @@ public class MemoryManager {
         roundsSinceFlush = 0;
         fileInitialized = false;
         currentSessionFile = null;
+    }
+
+    @Override public synchronized void restoreSession(String reference, List<Message> messages) {
+        clearSession();
+        sessionMessages.addAll(messages);
+        if (reference != null) {
+            try {
+                var root = Paths.get(BASE_PATH).toRealPath();
+                var path = Paths.get(reference).toAbsolutePath().normalize();
+                if (path.startsWith(Paths.get(BASE_PATH).toAbsolutePath().normalize())
+                        && Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS) && path.toRealPath().startsWith(root)) {
+                    currentSessionFile = path.toString();
+                    fileInitialized = true;
+                }
+            } catch (IOException | RuntimeException ignored) { }
+        }
+        if (!fileInitialized) pendingMessages.addAll(messages);
     }
 
     /**
@@ -357,10 +376,12 @@ public class MemoryManager {
     /**
      * 将暂存的多轮对话一次性提交给模型分析，异步提取偏好并保存。
      */
-    public void flushAndExtractLtmAsync(CommandContext ctx) {
+    public void flushAndExtractLtmAsync(ConversationContext ctx) {
         List<String> rounds = takePendingLtmRounds();
         if (rounds == null) return;
-        Thread t = new Thread(() -> doExtractLtm(rounds, ctx), "LongTermMemory-Extract");
+        var provider = ctx.getLlmClient();
+        var trace = ctx.traceListener();
+        Thread t = new Thread(() -> doExtractLtm(rounds, provider, trace), "LongTermMemory-Extract");
         t.setDaemon(true);
         t.start();
     }
@@ -368,10 +389,10 @@ public class MemoryManager {
     /**
      * 同步版本：退出时调用，会阻塞直到提取完成。
      */
-    public void flushAndExtractLtmSync(CommandContext ctx) {
+    public void flushAndExtractLtmSync(ConversationContext ctx) {
         List<String> rounds = takePendingLtmRounds();
         if (rounds == null) return;
-        doExtractLtm(rounds, ctx);
+        doExtractLtm(rounds, ctx.getLlmClient(), ctx.traceListener());
     }
 
     private synchronized List<String> takePendingLtmRounds() {
@@ -381,7 +402,8 @@ public class MemoryManager {
         return rounds;
     }
 
-    private void doExtractLtm(List<String> rounds, CommandContext ctx) {
+    private void doExtractLtm(List<String> rounds, com.jiyingda.codly.llm.LlmProvider provider,
+                              java.util.function.Consumer<com.jiyingda.codly.core.TraceEvent> trace) {
         try {
             String existingMemory = toExistingLtmMemoryText();
             String prompt = String.format(SystemPrompt.EXTRACT_MEMORY_PROMPT, existingMemory);
@@ -389,9 +411,9 @@ public class MemoryManager {
             List<Message> messages = new ArrayList<>();
             messages.add(Message.fromSystem(prompt));
             messages.add(Message.fromUser(conversation));
-            StringBuilder result = new StringBuilder();
-            ctx.getLlmClient().chat(ctx, messages, result::append);
-            String response = result.toString().trim();
+            String completion = provider.complete(messages, trace, "长期记忆提取");
+            if (completion == null) return;
+            String response = completion.trim();
             logger.debug("记忆提取模型返回：{}", response);
             parseAndSaveLtmMemories(response);
         } catch (Exception e) {

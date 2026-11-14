@@ -49,7 +49,7 @@ public class Tool {
         Function function = new Function();
         function.setName(fca.getName());
         function.setDescription(fca.getDescription());
-        function.setParameters(fca.getParameters());
+        function.setParameters(fca.getParameterSchema());
         tool.setFunction(function);
         return tool;
     }

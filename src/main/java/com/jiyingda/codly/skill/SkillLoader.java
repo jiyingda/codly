@@ -1,5 +1,6 @@
 package com.jiyingda.codly.skill;
 
+import com.jiyingda.codly.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,28 +33,39 @@ public class SkillLoader {
         return Paths.get(SKILLS_DIR);
     }
 
+    public static List<Path> roots(List<String> additionalDirectories) {
+        java.util.Set<Path> roots = new java.util.LinkedHashSet<>();
+        roots.add(skillsRoot().toAbsolutePath().normalize());
+        for (String directory : additionalDirectories) {
+            if (directory == null || directory.isBlank()) continue;
+            String expanded = directory.startsWith("~/")
+                    ? System.getProperty("user.home") + directory.substring(1) : directory;
+            roots.add(Path.of(expanded).toAbsolutePath().normalize());
+        }
+        return List.copyOf(roots);
+    }
+
     public static List<Skill> loadAll() {
-        Path root = skillsRoot();
-        List<Skill> skills = new ArrayList<>();
+        return loadAll(roots(Config.getSkillDirectories()));
+    }
 
-        if (!Files.isDirectory(root)) {
-            logger.info("skills 目录不存在,跳过加载: {}", root);
-            return skills;
-        }
-
-        try (Stream<Path> stream = Files.list(root)) {
-            stream.filter(Files::isDirectory).forEach(dir -> {
-                Skill s = loadOne(dir);
-                if (s != null) {
-                    skills.add(s);
+    /** 默认目录优先；同名 skill 保留第一个目录中的定义。 */
+    public static List<Skill> loadAll(List<Path> roots) {
+        Map<String, Skill> skills = new LinkedHashMap<>();
+        for (Path root : roots) {
+            if (!Files.isDirectory(root)) continue;
+            try (Stream<Path> stream = Files.list(root)) {
+                for (Path dir : stream.filter(Files::isDirectory).sorted().toList()) {
+                    Skill skill = loadOne(dir);
+                    if (skill != null && skills.putIfAbsent(skill.getName(), skill) != null) {
+                        logger.warn("忽略重复 skill：{} @ {}", skill.getName(), dir);
+                    }
                 }
-            });
-        } catch (IOException e) {
-            logger.warn("扫描 skills 目录失败: {}", e.getMessage());
+            } catch (IOException e) {
+                logger.warn("扫描 skills 目录失败: {}", root);
+            }
         }
-
-        skills.sort((a, b) -> a.getName().compareTo(b.getName()));
-        return skills;
+        return skills.values().stream().sorted(java.util.Comparator.comparing(Skill::getName)).toList();
     }
 
     private static Skill loadOne(Path dir) {

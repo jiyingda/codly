@@ -25,7 +25,7 @@ public final class UserConfirmation {
      */
     public static boolean confirm(Terminal terminal, String summary) {
         if (terminal == null) {
-            return true;
+            return false;
         }
 
         try {

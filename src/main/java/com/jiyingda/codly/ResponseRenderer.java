@@ -35,70 +35,72 @@ public class ResponseRenderer {
         ProgressIndicator indicator = new ProgressIndicator();
         indicator.start();
 
-        chatInvoker.accept(token -> {
-            // 检测 usage 特殊标记
-            if (token.startsWith(AbstractLlmClient.USAGE_PREFIX)) {
-                String[] parts = token.substring(AbstractLlmClient.USAGE_PREFIX.length()).split(":");
-                if (parts.length == 3) {
-                    try {
-                        stats.setUsage(
-                            Integer.parseInt(parts[0]),
-                            Integer.parseInt(parts[1]),
-                            Integer.parseInt(parts[2])
-                        );
-                    } catch (NumberFormatException ignored) {}
+        try {
+            chatInvoker.accept(token -> {
+                // 检测 usage 特殊标记
+                if (token.startsWith(AbstractLlmClient.USAGE_PREFIX)) {
+                    String[] parts = token.substring(AbstractLlmClient.USAGE_PREFIX.length()).split(":");
+                    if (parts.length == 3) {
+                        try {
+                            stats.setUsage(
+                                Integer.parseInt(parts[0]),
+                                Integer.parseInt(parts[1]),
+                                Integer.parseInt(parts[2])
+                            );
+                        } catch (NumberFormatException ignored) {}
+                    }
+                    return;
                 }
-                return;
-            }
-            // 思考过程开始：切到灰色输出，思考内容不计入对话正文
-            if (AbstractLlmClient.REASONING_START.equals(token)) {
+                // 思考过程开始：切到灰色输出，思考内容不计入对话正文
+                if (AbstractLlmClient.REASONING_START.equals(token)) {
+                    if (responseStarted.compareAndSet(false, true)) {
+                        indicator.stop();
+                        indicator.clear();
+                        System.out.print(">> ");
+                        stats.markFirstToken();
+                    }
+                    String pending = mdRenderer.flush();
+                    if (!pending.isEmpty()) {
+                        System.out.print(pending);
+                    }
+                    System.out.print(DIM_GRAY + "[思考] ");
+                    System.out.flush();
+                    reasoningMode.set(true);
+                    return;
+                }
+                // 思考过程结束
+                if (AbstractLlmClient.REASONING_END.equals(token)) {
+                    System.out.print(RESET);
+                    System.out.println();
+                    System.out.flush();
+                    reasoningMode.set(false);
+                    return;
+                }
+                // 思考内容：原样灰色输出，不经过 Markdown 渲染
+                if (reasoningMode.get()) {
+                    stats.incrementTokens();
+                    System.out.print(token);
+                    System.out.flush();
+                    return;
+                }
                 if (responseStarted.compareAndSet(false, true)) {
                     indicator.stop();
                     indicator.clear();
                     System.out.print(">> ");
                     stats.markFirstToken();
                 }
-                String pending = mdRenderer.flush();
-                if (!pending.isEmpty()) {
-                    System.out.print(pending);
-                }
-                System.out.print(DIM_GRAY + "[思考] ");
-                System.out.flush();
-                reasoningMode.set(true);
-                return;
-            }
-            // 思考过程结束
-            if (AbstractLlmClient.REASONING_END.equals(token)) {
-                System.out.print(RESET);
-                System.out.println();
-                System.out.flush();
-                reasoningMode.set(false);
-                return;
-            }
-            // 思考内容：原样灰色输出，不经过 Markdown 渲染
-            if (reasoningMode.get()) {
                 stats.incrementTokens();
-                System.out.print(token);
-                System.out.flush();
-                return;
-            }
-            if (responseStarted.compareAndSet(false, true)) {
-                indicator.stop();
-                indicator.clear();
-                System.out.print(">> ");
-                stats.markFirstToken();
-            }
-            stats.incrementTokens();
-            // Markdown 渲染
-            String rendered = mdRenderer.process(token);
-            if (!rendered.isEmpty()) {
-                System.out.print(rendered);
-                System.out.flush();
-            }
-            fullResponse.append(token);
-        });
-
-        indicator.stop();
+                // Markdown 渲染
+                String rendered = mdRenderer.process(token);
+                if (!rendered.isEmpty()) {
+                    System.out.print(rendered);
+                    System.out.flush();
+                }
+                fullResponse.append(token);
+            });
+        } finally {
+            indicator.stop();
+        }
 
         if (reasoningMode.get()) {
             System.out.print(RESET);

@@ -7,11 +7,10 @@
 package com.jiyingda.codly.function;
 
 import com.alibaba.fastjson.JSON;
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
 import com.jiyingda.codly.data.Parameters;
 import com.jiyingda.codly.data.Property;
 
-import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.Collections;
 import java.util.HashMap;
@@ -32,7 +31,7 @@ public class ExecBashFunctionCall implements FunctionCallApi {
     @Override
     public String getDescription() {
         return """
-        在持久化 shell 会话中执行给定的 bash 命令，支持可选超时。
+        在当前项目目录内启动独立 bash 进程执行命令。
 
         执行前请遵循以下步骤：
 
@@ -48,7 +47,7 @@ public class ExecBashFunctionCall implements FunctionCallApi {
 
         使用须知：
           - command 参数为必填
-          - 可指定可选超时（最大 600000ms/10 分钟），默认 120000ms/2 分钟
+          - 固定超时 30 秒
           - 请用 5-10 个字写一段清晰的命令描述
           - 输出超过 30000 字符会被截断
           - 多条命令用 `;` 或 `&&` 分隔，不要用换行（引号内换行除外）
@@ -89,7 +88,7 @@ public class ExecBashFunctionCall implements FunctionCallApi {
 
     @Override
     @SuppressWarnings("unchecked")
-    public String execute(String argsJson, CommandContext ctx) {
+    public String execute(String argsJson, ConversationContext ctx) {
         try {
             Map<String, Object> args = JSON.parseObject(argsJson, Map.class);
             String command = (String) args.get("command");
@@ -97,27 +96,51 @@ public class ExecBashFunctionCall implements FunctionCallApi {
                 return "未提供 command 参数";
             }
 
+            if (ctx.cancellation().isCancelled()) return "命令已取消";
             ProcessBuilder processBuilder = new ProcessBuilder("bash", "-c", command);
+            processBuilder.directory(ctx.getStartupPath().toFile());
             processBuilder.redirectErrorStream(true);
             Process process = processBuilder.start();
-
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    output.append(line).append("\n");
+            Runnable terminate = () -> {
+                try {
+                    process.descendants().forEach(ProcessHandle::destroyForcibly);
+                } catch (RuntimeException ignored) {
+                    // 受限运行环境可能禁止枚举进程，仍需终止直接子进程。
+                } finally {
+                    process.destroyForcibly();
                 }
-            }
-
-            if (!process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
-                process.destroy();
-                return "命令执行超时（超过 30 秒）";
-            }
-            int exitCode = process.exitValue();
-            if (exitCode == 0) {
-                return "执行成功:\n" + output;
-            } else {
-                return "执行失败，退出码 " + exitCode + ":\n" + output;
+            };
+            var cancellation = ctx.cancellation();
+            cancellation.register(terminate);
+            java.util.concurrent.FutureTask<String> output = new java.util.concurrent.FutureTask<>(() -> {
+                StringBuilder text = new StringBuilder();
+                try (var reader = new InputStreamReader(process.getInputStream(), java.nio.charset.StandardCharsets.UTF_8)) {
+                    char[] buffer = new char[2048];
+                    int count;
+                    while ((count = reader.read(buffer)) != -1) {
+                        int remaining = 30000 - text.length();
+                        if (remaining > 0) text.append(buffer, 0, Math.min(count, remaining));
+                    }
+                }
+                return text.toString();
+            });
+            Thread reader = new Thread(output, "Codly-Bash-Output");
+            reader.setDaemon(true);
+            reader.start();
+            try {
+                if (!process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
+                    terminate.run();
+                    return "命令执行超时（超过 30 秒）";
+                }
+                if (cancellation.isCancelled()) return "命令已取消";
+                String text = output.get(2, java.util.concurrent.TimeUnit.SECONDS);
+                int exitCode = process.exitValue();
+                return exitCode == 0 ? "执行成功:\n" + text
+                        : "执行失败，退出码 " + exitCode + ":\n" + text;
+            } finally {
+                cancellation.unregister(terminate);
+                if (process.isAlive() || !output.isDone()) terminate.run();
+                process.getInputStream().close();
             }
         } catch (Exception e) {
             return "执行 execBash 失败：" + e.getMessage();

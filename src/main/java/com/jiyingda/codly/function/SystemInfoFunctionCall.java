@@ -6,7 +6,7 @@
  */
 package com.jiyingda.codly.function;
 
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
 import com.jiyingda.codly.data.Parameters;
 import com.jiyingda.codly.data.Property;
 import com.jiyingda.codly.systeminfo.SystemInfoManager;
@@ -47,8 +47,8 @@ public class SystemInfoFunctionCall implements FunctionCallApi {
     }
 
     @Override
-    public String execute(String argsJson, CommandContext ctx) {
-        SystemInfoManager manager = SystemInfoManager.getInstance();
+    public String execute(String argsJson, ConversationContext ctx) {
+        SystemInfoManager manager = ctx.getSystemInfo();
 
         // 解析参数
         boolean refresh = false;

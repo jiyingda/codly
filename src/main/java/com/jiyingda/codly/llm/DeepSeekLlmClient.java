@@ -24,13 +24,19 @@ public class DeepSeekLlmClient extends AbstractLlmClient {
     }
 
     public DeepSeekLlmClient(String model) {
-        super(Config.getDeepseekApiUrlSafe(), requireApiKey(), resolveModel(model), Config.getEnableThinkingSafe());
+        this(Config.getDeepseekApiUrlSafe(), requireApiKey(), resolveModel(model), Config.getEnableThinkingSafe() ? ThinkingDepth.fromEffort(Config.getDeepseekReasoningEffortSafe()) : ThinkingDepth.OFF);
+    }
+
+    DeepSeekLlmClient(String url, String key, String model, ThinkingDepth depth) {
+        super(url, key, model, depth.enabled());
+        setThinkingDepth(depth);
     }
 
     @Override
     public List<String> getAvailableModels() {
         return Config.getDeepseekAvailableModelsSafe();
     }
+    @Override public String providerId() { return Config.PROVIDER_DEEPSEEK; }
 
     /**
      * DeepSeek 在 thinking 模式下要求把 reasoning_content 随 assistant 消息一起回传，
@@ -49,9 +55,10 @@ public class DeepSeekLlmClient extends AbstractLlmClient {
         req.setStream(true);
         req.setStream_options(new ChatRequest.StreamOptions(true));
         req.setTools(functionManager.getTools());
-        req.setThinking(new DeepSeekChatRequest.Thinking(enableThinking ? "enabled" : "disabled"));
-        if (enableThinking) {
-            req.setReasoning_effort(Config.getDeepseekReasoningEffortSafe());
+        ThinkingDepth depth = getThinkingDepth();
+        req.setThinking(new DeepSeekChatRequest.Thinking(depth.enabled() ? "enabled" : "disabled"));
+        if (depth.enabled()) {
+            req.setReasoning_effort(depth.effort());
         }
         return JSON.toJSONString(req);
     }

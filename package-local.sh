@@ -233,6 +233,11 @@ cp "$BUILT_JAR" "$TMP_JAR"
 mv -f "$TMP_JAR" "$INSTALL_JAR"
 trap - EXIT
 
+# 保留独立运行时，让本地更新和首次安装使用相同的 Java 选择规则。
+cp "$PROJECT_ROOT/web/codly-launcher.sh" "$INSTALL_DIR/codly.next"
+chmod +x "$INSTALL_DIR/codly.next"
+mv -f "$INSTALL_DIR/codly.next" "$INSTALL_DIR/codly"
+
 NEW_INFO=$(ls -lh "$INSTALL_JAR" | awk '{print $5", "$6" "$7" "$8}')
 print_info "已更新：${INSTALL_JAR}（${NEW_INFO}）"
 

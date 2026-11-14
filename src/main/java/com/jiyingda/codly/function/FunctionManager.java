@@ -6,7 +6,7 @@
  */
 package com.jiyingda.codly.function;
 
-import com.jiyingda.codly.command.CommandContext;
+import com.jiyingda.codly.core.ConversationContext;
 import com.jiyingda.codly.data.Tool;
 
 import java.util.ArrayList;
@@ -22,12 +22,17 @@ import java.util.Map;
 public class FunctionManager {
 
     private final Map<String, FunctionCallApi> functions = new HashMap<>();
-    private final List<Tool> tools = new ArrayList<>();
+    private final com.jiyingda.codly.mcp.McpRegistry mcp;
 
     /**
      * 构造函数，初始化默认的 functions
      */
     public FunctionManager() {
+        this(com.jiyingda.codly.config.Config.getMcpServers());
+    }
+
+    public FunctionManager(com.alibaba.fastjson.JSONObject servers) {
+        mcp = new com.jiyingda.codly.mcp.McpRegistry(servers);
         registerFunction(new ReadFileFunctionCall());
         registerFunction(new WriteFileFunctionCall());
         registerFunction(new EditFileFunctionCall());
@@ -42,14 +47,17 @@ public class FunctionManager {
         registerFunction(new KbReadFunctionCall());
         registerFunction(new KbSectionFunctionCall());
         registerFunction(new KbSourcesFunctionCall());
-        for (FunctionCallApi functionCall : functions.values()) {
-            tools.add(Tool.createFunction(functionCall));
-        }
     }
 
     public List<Tool> getTools() {
-        return new ArrayList<>(tools);
+        List<Tool> tools = new ArrayList<>();
+        functions.values().forEach(function -> tools.add(Tool.createFunction(function)));
+        mcp.functions().values().forEach(function -> tools.add(Tool.createFunction(function)));
+        return tools;
     }
+
+    public void prepareMcp(ConversationContext context) { mcp.load(context.cancellation(), context::emitTrace); }
+    public void close() { mcp.close(); }
 
     /**
      * 注册一个 Function
@@ -67,7 +75,7 @@ public class FunctionManager {
      * @return Function 实现，如果不存在则返回 null
      */
     public FunctionCallApi getFunction(String name) {
-        return functions.get(name);
+        return functions.containsKey(name) ? functions.get(name) : mcp.functions().get(name);
     }
 
     /**
@@ -77,17 +85,17 @@ public class FunctionManager {
      * @return 是否存在
      */
     public boolean hasFunction(String name) {
-        return functions.containsKey(name);
+        return functions.containsKey(name) || mcp.functions().containsKey(name);
     }
 
     /**
-     * 执行一个函数。若函数标记了 requiresConfirmation，会先通过终端让用户二次确认。
+     * 执行一个函数。敏感操作通过会话的批准策略和界面确认适配器授权。
      *
      * @param functionName 函数名称
      * @param argsJson     函数参数（JSON 格式）
      * @return 执行结果；若用户拒绝则返回拒绝提示
      */
-    public String execute(String functionName, String argsJson, CommandContext ctx) {
+    public String execute(String functionName, String argsJson, ConversationContext ctx) {
         FunctionCallApi functionCallApi = getFunction(functionName);
         if (functionCallApi == null) {
             return "未知的函数：" + functionName;
@@ -95,7 +103,7 @@ public class FunctionManager {
 
         if (functionCallApi.requiresConfirmation()) {
             String summary = functionCallApi.confirmationSummary(argsJson);
-            boolean allowed = UserConfirmation.confirm(ctx.getTerminal(), summary);
+            boolean allowed = ctx.confirm(functionName, argsJson, summary);
             if (!allowed) {
                 return "用户拒绝执行此操作";
             }
@@ -110,6 +118,8 @@ public class FunctionManager {
      * @return Functions 的 Map
      */
     public Map<String, FunctionCallApi> getAllFunctions() {
-        return new HashMap<>(functions);
+        Map<String, FunctionCallApi> all = new HashMap<>(functions);
+        all.putAll(mcp.functions());
+        return all;
     }
 }

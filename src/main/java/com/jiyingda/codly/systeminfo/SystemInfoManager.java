@@ -37,10 +37,17 @@ public class SystemInfoManager {
 
     private static SystemInfoManager instance;
 
+    private Path workspace = Paths.get("").toAbsolutePath().normalize();
     private Terminal terminal;
     private SystemInfo cachedInfo;
 
     private SystemInfoManager() {
+    }
+
+    public static SystemInfoManager forWorkspace(Path workspace) {
+        SystemInfoManager manager = new SystemInfoManager();
+        manager.workspace = workspace.toAbsolutePath().normalize();
+        return manager;
     }
 
     public static SystemInfoManager getInstance() {
@@ -117,7 +124,7 @@ public class SystemInfoManager {
     // ---- 内部采集方法 ----
 
     private SystemInfo collectAll() {
-        Path projectPath = Paths.get("").toAbsolutePath().normalize();
+        Path projectPath = workspace;
         return new SystemInfo(
                 collectOsName(), collectOsVersion(), collectOsArch(),
                 collectHostname(), collectUsername(),
