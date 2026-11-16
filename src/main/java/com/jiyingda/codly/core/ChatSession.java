@@ -54,6 +54,7 @@ public final class ChatSession implements AutoCloseable {
         }
         SkillRegistry.getInstance().load();
         applySkills(context);
+        context.configureRuntime(Path.of(System.getProperty("user.home"),".codly"),Config.getContextOptions(),Config.getExecutionOptions());
         KnowledgeRepository.getInstance().load();
         MemoryManager memory = MemoryManager.getInstance();
         return new ChatSession(context, memory, () -> SystemPrompt.SOUL_PROMPT
@@ -84,27 +85,39 @@ public final class ChatSession implements AutoCloseable {
         if (closed) throw new IllegalStateException("会话已关闭");
         if (input == null || input.isBlank()) throw new IllegalArgumentException("消息不能为空");
         context.beginTurn(cancellation);
-        if (cancellation.isCancelled()) return "";
+        if (cancellation.isCancelled()) { context.endTurn(cancellation); return ""; }
         context.setToolEvents(tools);
         context.setTraceEvents(trace);
         String turnId = TraceEvent.newId();
         context.emitTrace(TraceEvent.of(TraceEvent.newId(), TraceEvent.Kind.INPUT, TraceEvent.Phase.COMPLETE, "用户消息", input));
         context.emitTrace(TraceEvent.of(turnId, TraceEvent.Kind.LIFECYCLE, TraceEvent.Phase.START, "执行本轮对话", "工作目录：" + context.getStartupPath() + "\n模型：" + getModel() + "\n思考深度：" + getThinkingDepth() + "\n批准策略：" + context.getApprovalPolicy()));
         try {
-            context.setSystemPrompt(Message.fromSystem(prompt.get() + context.getApprovalPolicy().promptSection()));
-            lifecycle.handleUserMessage(input);
+            var project=context.project();
+            String prepared=input;
+            if(project!=null){
+                var attached=project.prepare(input);prepared=attached.message();
+                for(String file:attached.attachments())context.emitTrace(TraceEvent.of(TraceEvent.newId(),TraceEvent.Kind.LIFECYCLE,TraceEvent.Phase.COMPLETE,"附加文件",file));
+            }
+            context.setSystemPrompt(Message.fromSystem(prompt.get() + context.getApprovalPolicy().promptSection()+(project==null?"":project.ruleSection())));
+            fitContext(prepared);
+            if(cancellation.isCancelled())return "";
+            lifecycle.handleUserMessage(prepared,input);
             String reply = context.getLlmClient().chat(context, onToken);
             lifecycle.handleAssistantResponse(reply, input);
+            try{var measured=new ArrayList<Message>();measured.add(context.getSystemPrompt());measured.addAll(context.getMemory());context.budget().used(context.getLlmClient().estimateRequestTokens(context,measured));}catch(RuntimeException ignored){}
             context.emitTrace(TraceEvent.of(turnId, TraceEvent.Kind.LIFECYCLE,
                     cancellation.isCancelled() ? TraceEvent.Phase.CANCELLED : TraceEvent.Phase.COMPLETE,
                     cancellation.isCancelled() ? "本轮已停止" : "本轮已完成", ""));
             return reply;
+        } catch (java.io.IOException e) {
+            throw new IllegalArgumentException("读取文件或项目规则失败："+e.getMessage(),e);
         } catch (RuntimeException e) {
             context.emitTrace(TraceEvent.of(turnId, TraceEvent.Kind.LIFECYCLE, TraceEvent.Phase.FAILED, "本轮请求失败", e.getMessage()));
             throw e;
         } finally {
             context.setToolEvents(null);
             context.setTraceEvents(null);
+            context.endTurn(cancellation);
         }
     }
 
@@ -128,6 +141,66 @@ public final class ChatSession implements AutoCloseable {
     }
 
     public synchronized Path getWorkspace() { return context.getStartupPath(); }
+
+    /** 仅压缩模型上下文；原始会话日志保留，失败时不修改现有消息或会话状态。 */
+    public synchronized String compactConversation() {
+        return compactConversation(0);
+    }
+
+    private String compactConversation(int keepRecent) {
+        if (closed) throw new IllegalStateException("会话已关闭");
+        var messages = snapshotMessages().stream().filter(message -> !"system".equals(message.getRole())).toList();
+        if (messages.isEmpty()) return null;
+        int split=Math.max(0,messages.size()-keepRecent);
+        while(split>0&&split<messages.size()&&!"user".equals(messages.get(split).getRole()))split--;
+        if(split==0&&keepRecent>0)return null;
+        var prefix=messages.subList(0,split);
+        String summary = context.getLlmClient().complete(java.util.List.of(
+                Message.fromSystem(SystemPrompt.GEN_SUMMARY_PROMPT),
+                Message.fromUser(com.alibaba.fastjson.JSON.toJSONString(prefix) + "\n\n" + SystemPrompt.DEFAULT_SUMMARIZE_PROMPT)),
+                context.traceListener(), "压缩会话",context.cancellation());
+        if (summary == null || summary.isBlank()||java.util.Set.of("[]","{}","null").contains(summary.strip())) throw new IllegalStateException("模型未返回有效总结，已保留原对话");
+        context.getMemory().clear();
+        context.getMemory().add(Message.fromUser("[Previous conversation summarized]: " + summary.strip()));
+        context.getMemory().addAll(messages.subList(split,messages.size()));
+        return summary.strip();
+    }
+
+    private int estimate(String input){var messages=new ArrayList<Message>();messages.add(context.getSystemPrompt());messages.addAll(context.getMemory());messages.add(Message.fromUser(input));return context.getLlmClient().estimateRequestTokens(context,messages);}
+    private void fitContext(String input){
+        var budget=context.budget();int used=estimate(input);budget.used(used);
+        if(used>=budget.threshold(getModel())&&budget.autoCompact()&&!context.getMemory().isEmpty()){
+            try {String summary=compactConversation(budget.keepRecent());if(summary!=null)context.emitTrace(TraceEvent.of(TraceEvent.newId(),TraceEvent.Kind.LIFECYCLE,TraceEvent.Phase.COMPLETE,"自动压缩上下文","保留最近消息及原始日志"));}
+            catch(RuntimeException error){context.emitTrace(TraceEvent.of(TraceEvent.newId(),TraceEvent.Kind.LIFECYCLE,TraceEvent.Phase.FAILED,"自动压缩失败，原对话保留",error.getMessage()));}
+            used=estimate(input);budget.used(used);
+        }
+        if(used>budget.limit(getModel()))throw new ContextLimitException(budget.describe(getModel())+"；请缩小文件范围、压缩历史或配置更大的模型容量");
+    }
+
+    /** 本地预算刷新不连接 MCP；工具首次发现后会在实际请求前重新校验。 */
+    public synchronized void refreshContextBudget() throws java.io.IOException {
+        var project=context.project();
+        context.setSystemPrompt(Message.fromSystem(prompt.get()+context.getApprovalPolicy().promptSection()+(project==null?"":project.ruleSection())));
+        var messages=new ArrayList<Message>();messages.add(context.getSystemPrompt());messages.addAll(context.getMemory());
+        context.budget().used(context.getLlmClient().estimateRequestTokens(context,messages));
+    }
+
+    public synchronized String contextInfo() throws java.io.IOException {
+        refreshContextBudget();
+        StringBuilder text=new StringBuilder(context.budget().describe(getModel()));var project=context.project();
+        if(project!=null)for(var rule:project.rules())text.append("\n").append(rule.file()).append(" · ").append(rule.scope());return text.toString();
+    }
+
+    public synchronized String mcpStatus(boolean reconnect,Consumer<TraceEvent> trace) throws java.io.IOException {
+        return mcpStatus(reconnect,new CancellationToken(),trace);
+    }
+    public synchronized String mcpStatus(boolean reconnect,CancellationToken cancellation,Consumer<TraceEvent> trace) throws java.io.IOException {
+        if(closed)throw new IllegalStateException("会话已关闭");
+        com.alibaba.fastjson.JSONObject servers=null;
+        if(reconnect){var settings=new com.jiyingda.codly.config.SettingsStore(Path.of(Config.getConfigPath())).read().values();com.jiyingda.codly.config.SettingsStore.validateMcp(settings.get("mcpServers"));servers=settings.getJSONObject("mcpServers");if(servers==null)servers=new com.alibaba.fastjson.JSONObject();}
+        var previous=context.traceListener();context.setTraceEvents(trace);context.beginTurn(cancellation);
+        try{return context.getLlmClient().mcpStatus(context,servers);}finally{context.setTraceEvents(previous);context.endTurn(cancellation);}
+    }
 
     public synchronized java.util.List<Message> snapshotMessages() {
         return com.alibaba.fastjson.JSON.parseArray(com.alibaba.fastjson.JSON.toJSONString(context.getMemory()), Message.class);
@@ -174,6 +247,7 @@ public final class ChatSession implements AutoCloseable {
         context.setLlmClient(provider);
         if (previous != null) previous.close();
         applySkills(context);
+        context.configureRuntime(Path.of(System.getProperty("user.home"),".codly"),Config.getContextOptions(),Config.getExecutionOptions());
     }
 
     public void cancel() {
@@ -198,10 +272,15 @@ public final class ChatSession implements AutoCloseable {
 
     @Override
     public synchronized void close() {
+        close(true);
+    }
+
+    public synchronized void close(boolean extractLongTerm) {
         if (closed) return;
         closed = true;
         context.setShouldQuit(true);
-        try { lifecycle.shutdown(); }
+        try { context.closeTasks();lifecycle.shutdown(extractLongTerm); }
         finally { if (context.getLlmClient() != null) context.getLlmClient().close(); }
     }
+    public synchronized int runningTasks(){return context.runningTasks();}
 }

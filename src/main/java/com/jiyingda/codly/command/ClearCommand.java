@@ -1,6 +1,5 @@
 package com.jiyingda.codly.command;
 
-import com.jiyingda.codly.memory.MemoryManager;
 import picocli.CommandLine.Command;
 
 @Command(name = "/clear", description = "清空对话历史")
@@ -11,8 +10,7 @@ public class ClearCommand implements Runnable, CliCommand {
 
     @Override
     public boolean execute(CommandContext ctx) {
-        ctx.resetMemory();
-        MemoryManager.getInstance().clearSession();
+        ctx.getSession().newConversation();
         System.out.println("对话内容已清空");
         return false;
     }

@@ -19,6 +19,7 @@ public class SysInfoCommand implements Runnable, CliCommand {
 
     @Override
     public boolean execute(CommandContext ctx) {
+        if(!arg.isBlank()&&!arg.equalsIgnoreCase("refresh"))throw new IllegalArgumentException("用法：/sysinfo [refresh]");
         SystemInfoManager mgr = ctx.getSystemInfo();
         if ("refresh".equalsIgnoreCase(arg.trim())) {
             mgr.refresh();

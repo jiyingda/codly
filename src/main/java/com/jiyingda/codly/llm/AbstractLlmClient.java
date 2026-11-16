@@ -61,7 +61,9 @@ public abstract class AbstractLlmClient implements LlmProvider {
     protected final String apiKey;
     protected final OkHttpClient httpClient;
     protected final FunctionManager functionManager;
+    @Override public int estimateRequestTokens(ConversationContext context,List<Message> messages){return com.jiyingda.codly.context.ContextBudget.estimate(buildChatRequestBody(messages));}
     @Override public void close() { functionManager.close(); }
+    @Override public String mcpStatus(ConversationContext context,JSONObject refreshed){return functionManager.mcpStatus(context,refreshed);}
     protected volatile ThinkingDepth thinkingDepth;
     protected String model;
 
@@ -118,12 +120,16 @@ public abstract class AbstractLlmClient implements LlmProvider {
 
     @Override
     public String complete(List<Message> messages, Consumer<TraceEvent> trace, String purpose) {
+        return complete(messages,trace,purpose,new CancellationToken());
+    }
+    @Override public String complete(List<Message> messages,Consumer<TraceEvent> trace,String purpose,CancellationToken cancellation) {
         String jsonBody = buildSimpleRequestBody(messages);
         String id = TraceEvent.newId();
         trace(trace, TraceEvent.of(id, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.START, purpose + " · " + model, requestDetails(messages, jsonBody)));
         logger.info("同步补全请求入参: model={}, apiUrl={}, jsonBody={}", model, apiUrl, jsonBody);
 
-        try (Response response = httpClient.newCall(newRequest(jsonBody)).execute()) {
+        Call call=httpClient.newCall(newRequest(jsonBody));Runnable cancel=call::cancel;cancellation.register(cancel);
+        try (Response response = call.execute()) {
             if (!response.isSuccessful() || response.body() == null) {
                 String error = safeErrorBody(response);
                 trace(trace, TraceEvent.of(id, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.FAILED, purpose + "失败", "\nHTTP " + response.code() + "\n" + error));
@@ -139,7 +145,7 @@ public abstract class AbstractLlmClient implements LlmProvider {
             trace(trace, TraceEvent.of(id, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.FAILED, purpose + "失败", "\n" + e.getMessage()));
             logger.error("同步补全请求异常：{}", e.getMessage(), e);
             return null;
-        }
+        } finally { cancellation.unregister(cancel); }
     }
 
     @Override
@@ -248,6 +254,7 @@ public abstract class AbstractLlmClient implements LlmProvider {
     private String doChat(ConversationContext ctx, List<Message> messages, Consumer<String> onToken) {
         StringBuilder totalContent = new StringBuilder();
         int depth = 0;
+        int[] cumulativeUsage = new int[3];
 
         CancellationToken cancellation = ctx.cancellation();
         while (depth < MAX_TOOL_CALL_DEPTH) {
@@ -256,7 +263,8 @@ public abstract class AbstractLlmClient implements LlmProvider {
             }
             functionManager.prepareMcp(ctx);
             if (cancellation.isCancelled()) break;
-            String jsonBody = buildChatRequestBody(messages);
+            String jsonBody = fitRequest(messages,ctx,cancellation);
+            if(cancellation.isCancelled())break;
             String requestId = TraceEvent.newId();
             String thinkingId = TraceEvent.newId();
             boolean[] thinkingStarted = {false};
@@ -411,6 +419,10 @@ public abstract class AbstractLlmClient implements LlmProvider {
 
                 totalContent.append(fullContent);
                 contentRecorded = true;
+                if (usageInfo[2] > 0) {
+                    for (int i = 0; i < 3; i++) cumulativeUsage[i] += usageInfo[i];
+                    if (onToken != null) onToken.accept(USAGE_PREFIX + cumulativeUsage[0] + ":" + cumulativeUsage[1] + ":" + cumulativeUsage[2]);
+                }
                 // 执行所有 tool_calls，收集结果后继续循环
                 if (!finalToolCalls.isEmpty()) {
                     // 先将 assistant 的 tool_calls 回复加入消息列表
@@ -475,10 +487,6 @@ public abstract class AbstractLlmClient implements LlmProvider {
                 }
 
                 // 本轮对话结束（无 tool_call 或工具未找到），返回结果
-                // 传递 usage 信息（通过特殊标记）
-                if (usageInfo[2] > 0 && onToken != null) {
-                    onToken.accept(USAGE_PREFIX + usageInfo[0] + ":" + usageInfo[1] + ":" + usageInfo[2]);
-                }
             } catch (RuntimeException e) {
                 if (!contentRecorded) {
                     ctx.emitTrace(TraceEvent.of(requestId, TraceEvent.Kind.MODEL_REQUEST, TraceEvent.Phase.FAILED, "模型请求 " + (depth + 1), "\n" + e.getMessage()));
@@ -502,6 +510,28 @@ public abstract class AbstractLlmClient implements LlmProvider {
             break;
         }
 
+        if(depth>=MAX_TOOL_CALL_DEPTH&&!cancellation.isCancelled())throw new com.jiyingda.codly.core.TurnLimitException("已达到本轮工具调用上限（"+MAX_TOOL_CALL_DEPTH+" 次），可发送消息继续任务");
         return totalContent.toString();
+    }
+
+    private String fitRequest(List<Message> messages,ConversationContext context,CancellationToken cancellation) {
+        var budget=context.budget();String body=buildChatRequestBody(messages);int used=com.jiyingda.codly.context.ContextBudget.estimate(body);boolean compressed=false;
+        if(used>=budget.threshold(model)&&budget.autoCompact()) {
+            int currentUser=0;for(int i=1;i<messages.size();i++)if("user".equals(messages.get(i).getRole()))currentUser=i;
+            if(currentUser>1&&com.jiyingda.codly.context.ContextBudget.estimate(JSON.toJSONString(messages.subList(1,currentUser)))>1024) {
+                String summary=complete(List.of(Message.fromSystem(SystemPrompt.GEN_SUMMARY_PROMPT),Message.fromUser(JSON.toJSONString(messages.subList(1,currentUser))+"\n\n"+SystemPrompt.DEFAULT_SUMMARIZE_PROMPT)),context.traceListener(),"自动压缩请求上下文",cancellation);
+                if(summary!=null&&!summary.isBlank()&&!List.of("[]","{}","null").contains(summary.strip())){messages.subList(1,currentUser).clear();messages.add(1,Message.fromUser("[Previous conversation summarized]: "+summary));compressed=true;}
+            }
+            body=buildChatRequestBody(messages);used=com.jiyingda.codly.context.ContextBudget.estimate(body);
+            if(used>=budget.threshold(model))for(int i=1;i<messages.size();i++) {
+                Message message=messages.get(i);String text=message.getContent();
+                if("tool".equals(message.getRole())&&text!=null&&text.length()>4096){Message shortened=Message.fromTool(message.getTool_call_id(),text.substring(0,512)+"\n[工具输出已压缩；完整内容保留在轨迹和任务日志，可分页读取]\n"+text.substring(text.length()-2048));messages.set(i,shortened);compressed=true;}
+            }
+            body=buildChatRequestBody(messages);used=com.jiyingda.codly.context.ContextBudget.estimate(body);
+        }
+        budget.used(used);
+        if(compressed)context.emitTrace(TraceEvent.of(TraceEvent.newId(),TraceEvent.Kind.LIFECYCLE,TraceEvent.Phase.COMPLETE,"自动压缩请求上下文","保留当前目标、工具调用配对及结果摘要；完整内容保留在轨迹和日志。"));
+        if(used>budget.limit(model))throw new com.jiyingda.codly.core.ContextLimitException(budget.describe(model)+"；请缩小文件/工具输出或增加模型容量配置");
+        return body;
     }
 }

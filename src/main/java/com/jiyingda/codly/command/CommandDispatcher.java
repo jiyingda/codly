@@ -23,6 +23,14 @@ import java.util.Optional;
     SkillCommand.class,
     SysInfoCommand.class,
     KbCommand.class,
+    ResumeCommand.class,
+    PermissionsCommand.class,
+    TraceCommand.class,
+    ContextCommand.class,
+    McpCommand.class,
+    TasksCommand.class,
+    EditorCommand.class,
+    DraftCommand.class,
 })
 public class CommandDispatcher implements Runnable {
 
@@ -50,21 +58,24 @@ public class CommandDispatcher implements Runnable {
     public DispatchResult dispatch(String input, CommandContext ctx) {
         String trimmed = input.trim();
 
-        if (!trimmed.startsWith("/")) {
+        if (!trimmed.startsWith("/") || trimmed.contains("\n")) {
             return DispatchResult.NOT_COMMAND;
         }
 
         // 动态命令 /skill-<name>:激活对应 skill
         if (trimmed.startsWith("/skill-") && trimmed.length() > "/skill-".length()) {
-            String skillName = trimmed.substring("/skill-".length()).split("\\s+")[0];
-            return handleSkillActivate(skillName, ctx);
+            try {
+                var words=com.jiyingda.codly.util.CommandWords.parse(trimmed);
+                if(words.size()!=1)throw new IllegalArgumentException("/skill-<name> 不接受额外参数");
+                return handleSkillActivate(words.get(0).substring("/skill-".length()), ctx);
+            } catch(IllegalArgumentException error){System.err.println("命令参数无效："+error.getMessage());return DispatchResult.HANDLED;}
         }
 
         CommandLine cmd = new CommandLine(this);
-        cmd.setUnmatchedArgumentsAllowed(true);
+        cmd.setUnmatchedArgumentsAllowed(false);
 
         try {
-            CommandLine.ParseResult parseResult = cmd.parseArgs(trimmed.split("\\s+"));
+            CommandLine.ParseResult parseResult = cmd.parseArgs(com.jiyingda.codly.util.CommandWords.parse(trimmed).toArray(String[]::new));
 
             if (!parseResult.hasSubcommand()) {
                 return DispatchResult.UNKNOWN;
@@ -76,8 +87,9 @@ public class CommandDispatcher implements Runnable {
                 return shouldQuit ? DispatchResult.QUIT : DispatchResult.HANDLED;
             }
 
-        } catch (CommandLine.UnmatchedArgumentException | CommandLine.MissingParameterException e) {
-            // 忽略
+        } catch (CommandLine.ParameterException | IllegalArgumentException e) {
+            System.err.println("命令参数无效："+e.getMessage());
+            return DispatchResult.HANDLED;
         }
 
         return DispatchResult.UNKNOWN;
@@ -90,6 +102,14 @@ public class CommandDispatcher implements Runnable {
               /help    显示帮助信息
               /clear   清空对话历史
               /compact 压缩对话历史，保留总结
+              /resume [ID]  选择或恢复历史对话
+              /permissions [ask|assisted|full]  切换批准策略
+              /trace [序号|all]  查看执行轨迹和详情
+              /context 查看上下文预算及项目规则
+              /mcp [status|reconnect] 查看 MCP 或重新连接
+              /tasks [status ID|output ID [offset]|stop ID] 管理后台任务
+              /editor 使用外部编辑器编辑草稿（Ctrl+X Ctrl+E）
+              /draft 恢复最近草稿（Ctrl+X Ctrl+R）
               /model   列出并切换模型
               /memory  查看长期记忆（/memory clear 清空，/memory delete <key> 删除）
               /gen-skill 根据最近的对话自动生成一个 skill

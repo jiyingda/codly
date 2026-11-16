@@ -250,6 +250,7 @@ final class ConversationView extends JPanel {
         void endReasoning() { thinking = false; activity("正在生成回复…"); }
         void resumeTool() { activity(toolName == null ? "正在执行操作…" : "正在调用 " + toolName + "…"); }
         void tool(ToolEvent event) {
+            if(event.state()==ToolEvent.State.OUTPUT){activity("正在调用 "+event.name()+"…");return;}
             if (event.state() == ToolEvent.State.REQUESTED) {
                 toolName = event.name();
                 raw.setLength(0); // 工具前的解释属于中间过程，完整内容保留在轨迹。

@@ -2,7 +2,7 @@
 
 Codly 是一个终端里的 AI 编程助手（CLI），支持对话式编程和工具调用。
 
-输入 `/` 会逐字符显示匹配的命令与 `/skill-<name>` 候选。直接按 ↑↓ 进入候选菜单并选择，Enter 确认补全，再按 Enter 执行；也支持 Tab 补全。普通对话中 ↑↓ 仍用于浏览历史记录。
+输入 `/` 在输入框下方显示紧凑的单列命令列表，最多显示 6 项，随输入筛选。↑↓ 移动选择，Tab 或 Enter 补全，再按 Enter 执行；输入完整命令可直接执行。删除 `/`、输入空格或按 Esc 立即关闭列表，继续正常编辑。普通对话中 ↑↓ 仍用于浏览历史记录。
 
 🌐 官网：[http://codly.jiyingda.com](http://codly.jiyingda.com)
 
@@ -70,7 +70,7 @@ EOF
 ### 切换到 DeepSeek
 
 把 `provider` 改为 `deepseek`，并填好 `deepseek.apiKey`，重启即可。`/model` 只在当前 provider 的模型列表内切换。
-启用思考时（`enableThinking: true`）思考过程会以灰色输出，且不会写入对话记忆。
+启用思考时（`enableThinking: true`）显示正在思考状态，正文与完整过程分别在对话和轨迹中展示。
 
 ### 3. 构建
 ```bash
@@ -235,7 +235,17 @@ DesktopMain（Swing） ──────────┘
 > 把 README 追加一行“测试内容”
 ```
 
-模型回复会流式输出。
+执行期间，终端底部显示工作区、模型、思考深度、批准策略和当前阶段；工具完成后显示耗时及简短结果，最终回答集中输出。完整提示词、思考、参数和工具结果通过 `/trace` 查看。
+
+CLI 与桌面共用 `~/.codly/conversations/` 中的对话归档。每轮结束、新建、切换和正常退出时保存；历史恢复会同步切换工作目录、模型、思考深度及上下文。批准策略沿用当前 CLI 设置，临时授权不随历史恢复。
+
+```bash
+codly resume            # 搜索、选择历史对话（支持序号、ID 和关键词）
+codly resume <ID>       # 恢复指定对话，可使用唯一 ID 前缀
+codly --continue        # 继续当前工作区最近的历史
+```
+
+旧记录没有保存工作区，或原目录不可访问时，需要输入该对话的目录进行绑定；目录可包含空格。回车取消会保留当前对话，绑定后再次恢复无需重复选择。
 
 ## CLI 命令
 
@@ -243,6 +253,22 @@ DesktopMain（Swing） ──────────┘
 /help                   显示帮助信息
 /clear                  清空对话历史
 /compact                压缩对话历史，保留总结
+/resume [ID]            选择或恢复历史对话
+/permissions            交互选择批准策略
+/permissions ask        请求批准（CLI 默认）
+/permissions assisted   帮我批准
+/permissions full       完全授权
+/trace                  按时间列出当前对话轨迹
+/trace <序号>           查看某条轨迹的完整提示词、命令及结果
+/trace all              查看全部轨迹详情
+/context                查看上下文估算、剩余预算和 AGENTS.md 作用域
+/mcp [status|reconnect] 查看 MCP 状态、工具数量，或从最新配置重新连接
+/tasks                  列出本进程任务及可读取的历史任务
+/tasks status <ID>      查看任务状态
+/tasks output <ID> [offset]  分页读取日志（offset 为字节位置）
+/tasks stop <ID>        停止本进程管理的任务
+/editor                 用外部编辑器编辑长提示词，返回后确认发送
+/draft                  恢复当前项目最近草稿
 /model                  列出并切换当前使用的模型
 /memory                 查看长期记忆
 /memory clear           清空所有长期记忆
@@ -265,8 +291,109 @@ DesktopMain（Swing） ──────────┘
 ```
 
 终端快捷键：
-- `Ctrl+C` 退出程序
-- `Ctrl+U` 清空当前输入行
+- 运行中 `Ctrl+C` 取消当前请求或工具，保留会话并返回输入区。
+- 输入时 `Ctrl+C` 清空草稿；空输入时按两次 `Ctrl+C`（2 秒内）退出。`Ctrl+D` 或 `/quit` 也可退出。
+- `Enter` 发送；`Ctrl+J` 或 `Alt+Enter` 换行。支持的终端中 `Shift+Enter` 也可换行；终端若把它编码为普通 Enter，请使用 `Ctrl+J`。
+- 多行粘贴使用 bracketed paste，代码保持在同一输入中，按 Enter 后发送。
+- `↑↓` 浏览当前项目输入历史，`Ctrl+R` 反向搜索历史。
+- `Ctrl+X Ctrl+E` 调用 `$VISUAL` / `$EDITOR`（默认 `vi`），`Ctrl+X Ctrl+R` 恢复草稿；编辑返回后按 Enter 发送。
+- `Ctrl+U` 清空当前输入行。
+
+需要批准的操作可选 `y` 仅本次允许、`a` 本会话同类操作允许、`n` / 回车拒绝。提示会展示实际可记忆范围；新对话清空临时授权。批准提示中按 `Ctrl+C` 会取消当前轮次。
+
+## 文件、项目规则与上下文
+
+输入 `@` 加路径前缀后按 Tab 搜索补全；文件名包含空格时会自动转义，也可以手动使用引号：
+
+```text
+解释 @src/Main.java#20-80
+比较 @"src/file name.java"#L2-L30 和 @README.md
+```
+
+发送时会列出已附加的文件。只允许当前工作区内的 UTF-8 普通文件，不跟随符号链接。
+Git 项目遵循 Git 忽略规则（包括全局排除和 `.git/info/exclude`）；其他目录读取各层 `.gitignore`、`.codlyignore`。
+单文件最多 64KB，附加内容总量最多 256KB；大文件在交互模式下先选择行范围，非交互模式需要直接指定范围，单次最多 2000 行。
+
+共享核心会加载 `~/.codly/AGENTS.md` 全局规则、仓库根到当前工作区的祖先规则，以及工作区内各子目录的 `AGENTS.md`。
+每条规则标明适用目录，子目录规则只作用于对应目录，更具体的规则在该目录优先。`/context` 查看加载路径和作用域；规则正文仍在文件中，实际请求可通过 `/trace` 查看。
+
+底部状态区和 `/context` 显示上下文估算值、容量、输入剩余及预留输出。估算包括系统提示词、文件、历史和工具定义，采用字符估算，不作为模型的实际 usage。
+未配置容量时使用 32768 tokens；建议按服务实际限制配置模型容量：
+
+```json
+{
+  "context": {
+    "windowTokens": 32768,
+    "models": {"your-model": 131072},
+    "reserveTokens": 4096,
+    "autoCompact": true,
+    "keepRecentMessages": 4
+  },
+  "execution": {
+    "timeoutSeconds": 120,
+    "backgroundTimeoutSeconds": 86400,
+    "outputLimit": 30000
+  }
+}
+```
+
+接近容量时自动总结较早对话，保留近期消息和任务目标、决策与下一步；工具回合过长时保留结果摘要。
+总结失败且仍在输入预算内会继续；超出预算会明确停止，避免发出过大的请求。
+原始对话日志、轨迹和任务输出保留，压缩只改变提交给模型的上下文。
+
+输入历史位于 `~/.codly/input-history/<工作区哈希>.history`，草稿位于 `~/.codly/drafts/<工作区哈希>.txt`，与完整对话归档分开。
+切换历史对话时同步切换项目输入历史；Ctrl+C 清空的草稿可跨重启恢复。批准、目录绑定及行范围选择等辅助输入不写入提示词历史。
+
+## 命令执行与后台任务
+
+模型调用 Bash 可指定 `timeoutSeconds`（1..604800 秒）、`background: true`，或 `yieldSeconds` 等待一段时间后返回仍在运行的任务 ID。
+前台持续输出通过当前状态和轨迹更新；结果返回尾部摘要，截断时明确给出完整日志路径。
+
+```text
+/tasks
+/tasks status <ID>
+/tasks output <ID> 0
+/tasks output <ID> <上次返回的 nextOffset>
+/tasks stop <ID>
+```
+
+日志按字节分页，返回 `nextOffset`、`hasMore` 和状态。完整输出与任务元数据位于 `~/.codly/tasks/`，支持的平台上文件权限为 `600`。
+前台取消会终止进程及子进程；已转后台的任务可继续跨轮次运行。
+所有托管任务（构建、服务等）均属于当前 Codly 进程：正常退出停止仍在运行的任务并保留日志，不作为独立守护服务。
+重启可查看历史日志，不接管其他活跃进程的任务；异常退出遗留的运行记录标为 `INTERRUPTED`。不要让命令自行 daemonize 或脱离进程管理。
+
+`/mcp` 展示连接状态、工具数量和失败原因；修改 `settings.json` 的 `mcpServers` 后执行 `/mcp reconnect`，读取最新配置并替换旧连接和工具。鉴权头值经过脱敏，不进入状态和轨迹。
+
+## 非交互与自动化
+
+```bash
+codly "检查当前项目"                     # 交互模式先执行该提示词
+codly -p '解释 @src/Main.java#1-60'       # 单次执行后退出
+cat build.log | codly -p '分析构建失败原因'
+printf '检查当前项目' | codly --output-format json
+codly -p '运行测试' --cwd '/path/with spaces' --model your-model \
+  --thinking high --permissions assisted --output-format jsonl
+codly --continue -p '继续未完成的任务'
+codly resume <ID> -p '继续任务'
+```
+
+`--thinking` 接受 `off/low/high/max`，`--permissions`（别名 `--approval`）接受 `ask/assisted/full`。
+显式参数覆盖恢复记录中的模型及思考深度。不接入终端时自动使用非交互模式，可通过位置提示词、`-p/--prompt` 或 stdin 提供内容；stdin 与 `-p` 同时存在时作为补充输入。
+
+`--output-format` 支持 `text`（只输出最终回答）、`json`（单个结果对象）、`jsonl`（事件流，别名 `stream-json`）。
+JSON 结果包含 `ok`、`exitCode`、`response`、会话与工作区、usage 和耗时；JSONL 包含 `init/message/thinking/tool_use/tool_output/tool_result/error/result` 等事件，最后的 `result` 是最终结果。思考事件仅包含状态。
+stdout 只写所选格式，诊断写 stderr；非交互模式不弹批准提示，未获当前策略批准的操作返回拒绝状态。正常退出停止后台任务，JSON 结果中提供停止数量。
+
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 完成 |
+| 1 | 配置、网络或执行失败 |
+| 2 | 参数、输入或文件引用无效 |
+| 3 | 操作未获批准 |
+| 4 | 达到上下文或本轮工具调用限制 |
+| 130 | 用户取消 |
+
+斜杠命令支持引号和反斜杠转义，例如 `/memory delete "key with spaces"`；不完整引号和多余参数会给出错误，不执行 shell 展开。
 
 ## 内置工具能力
 
@@ -278,7 +405,8 @@ DesktopMain（Swing） ──────────┘
 | `search_file` | 按 glob 模式在工作目录内搜索文件 |
 | `Grep` | 在文件中搜索文本/正则内容 |
 | `list_directory` | 列出目录内容 |
-| `Bash` | 执行 Bash 命令（按权限分级和所选策略决定是否确认，超时 30 秒） |
+| `Bash` | 按权限策略执行命令；前台默认 120 秒，可配置超时、后台执行与等待后转后台；完整输出写日志 |
+| `task_status` / `task_output` / `task_stop` | 查询当前工作区任务、分页读取输出、停止任务 |
 | `system_info` | 读取系统和运行环境信息 |
 | `web_search` | 通过通义搜索 API 搜索互联网内容 |
 | `kb_list` | 列出 ~/.codly/knowledge/ 下全部已加载的知识包 |

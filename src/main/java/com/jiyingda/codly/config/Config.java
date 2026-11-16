@@ -45,6 +45,8 @@ public class Config {
 
     private JSONObject skills;
     private JSONObject mcpServers;
+    private JSONObject contextOptions;
+    private JSONObject executionOptions;
 
     private boolean configLoaded = false;
     private String loadError = null;
@@ -98,6 +100,9 @@ public class Config {
             this.skills = json.getJSONObject("skills");
             SettingsStore.validateMcp(json.get("mcpServers"));
             this.mcpServers = json.getJSONObject("mcpServers");
+            SettingsStore.validateRuntime(json);
+            this.contextOptions = json.getJSONObject("context");
+            this.executionOptions = json.getJSONObject("execution");
             this.deepseekApiKey = null;
             this.deepseekApiUrl = null;
             this.deepseekModel = null;
@@ -356,6 +361,9 @@ public class Config {
                     : JSON.parseObject(JSON.toJSONString(config.mcpServers));
         }
     }
+
+    public static JSONObject getContextOptions() { Config config=getInstance();synchronized(config){return config.contextOptions==null?new JSONObject():JSON.parseObject(JSON.toJSONString(config.contextOptions));} }
+    public static JSONObject getExecutionOptions() { Config config=getInstance();synchronized(config){return config.executionOptions==null?new JSONObject():JSON.parseObject(JSON.toJSONString(config.executionOptions));} }
 
     public static void printLoadErr(Config config, Consumer<String> out) {
         out.accept("");

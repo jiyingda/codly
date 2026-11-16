@@ -34,6 +34,13 @@ public class KbCommand implements Runnable, CliCommand {
 
     @Override
     public boolean execute(CommandContext ctx) {
+        int expected = switch(action.toLowerCase(java.util.Locale.ROOT)) {
+            case "", "reload" -> 0;
+            case "show", "delete" -> 1;
+            case "section", "status" -> 2;
+            default -> -1;
+        };
+        if(expected>=0 && args.length!=expected)throw new IllegalArgumentException("/kb "+action+" 需要 "+expected+" 个参数，/help 查看用法");
         KnowledgeRepository repo = KnowledgeRepository.getInstance();
         switch (action.toLowerCase()) {
             case "" -> printIndex(repo);

@@ -56,6 +56,7 @@ public class AbstractLlmClientTest {
             String response = calls.getAndIncrement() == 0
                     ? "data: {\"choices\":[{\"delta\":{\"content\":\"before\",\"tool_calls\":[{\"index\":0,\"id\":\"t1\",\"type\":\"function\",\"function\":{\"name\":\"kb_list\",\"arguments\":\"{}\"}}]}}]}\n\ndata: [DONE]\n\n"
                     : "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"thinking\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"after\"}}]}\n\ndata: [DONE]\n\n";
+            response = response.replace("data: [DONE]", "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":4,\"total_tokens\":14}}\n\ndata: [DONE]");
             byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
             exchange.sendResponseHeaders(200, bytes.length);
@@ -71,6 +72,8 @@ public class AbstractLlmClientTest {
             List<String> stream = new ArrayList<>();
             assertEquals("beforeafter", client.chat(ctx, stream::add));
             assertEquals(2, calls.get());
+            assertTrue(stream.contains(AbstractLlmClient.USAGE_PREFIX + "10:4:14"));
+            assertTrue(stream.contains(AbstractLlmClient.USAGE_PREFIX + "20:8:28"));
             assertTrue(stream.contains(AbstractLlmClient.REASONING_START));
             assertTrue(stream.stream().anyMatch(token -> token.contains("kb_list")));
             var messages = JSON.parseObject(requests.get(1)).getJSONArray("messages");
@@ -151,6 +154,20 @@ public class AbstractLlmClientTest {
                     () -> client.chat(ctx, token -> {})).getMessage().contains("401"));
             assertTrue(trace.stream().anyMatch(event -> event.phase() == TraceEvent.Phase.FAILED && event.detail().contains("401")));
         } finally { server.stop(0); }
+    }
+
+    @Test(timeout=10000) public void toolLoopLimitIsAnExplicitFailure()throws Exception {
+        HttpServer server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        AtomicInteger calls=new AtomicInteger();
+        server.createContext("/chat",exchange->{
+            exchange.getRequestBody().readAllBytes();int i=calls.incrementAndGet();
+            String body="data: "+JSON.toJSONString(java.util.Map.of("choices",List.of(java.util.Map.of("delta",java.util.Map.of("tool_calls",List.of(java.util.Map.of("index",0,"id","t"+i,"type","function","function",java.util.Map.of("name","kb_list","arguments","{}"))))))))+"\n\ndata: [DONE]\n\n";
+            byte[] bytes=body.getBytes(StandardCharsets.UTF_8);exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
+        });server.start();
+        TestClient client=new TestClient("http://127.0.0.1:"+server.getAddress().getPort()+"/chat");
+        try {
+            assertThrows(com.jiyingda.codly.core.TurnLimitException.class,()->client.chat(context(client),token->{}));assertEquals(10,calls.get());
+        }finally{client.close();server.stop(0);}
     }
 
     private ConversationContext context(TestClient client) {

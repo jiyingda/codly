@@ -19,6 +19,7 @@ public enum ExecutionPermission {
         try {
             var args = JSON.parseObject(arguments);
             if (args == null) return SENSITIVE;
+            if("task_stop".equals(tool)&&args.getString("id")!=null&&args.getString("id").matches("[a-f0-9]{32}"))return PROJECT;
             if ("write_file".equals(tool) || "edit_file".equals(tool)) {
                 Object path = args.get("filePath");
                 return path instanceof String s && projectPath(s, workspace, true) ? PROJECT : SENSITIVE;

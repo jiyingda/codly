@@ -16,7 +16,7 @@ public class ResponseRenderer {
     private static final String RESET = "\033[0m";
     private static final String DIM_GRAY = "\033[2m\033[90m";
 
-    private final TokenStats lastStats = new TokenStats();
+    private TokenStats lastStats = new TokenStats();
 
     /**
      * 执行一次 LLM 请求并渲染流式输出（含 Markdown 着色和统计）。
@@ -78,7 +78,7 @@ public class ResponseRenderer {
                 }
                 // 思考内容：原样灰色输出，不经过 Markdown 渲染
                 if (reasoningMode.get()) {
-                    stats.incrementTokens();
+                    stats.recordChunk();
                     System.out.print(token);
                     System.out.flush();
                     return;
@@ -89,7 +89,7 @@ public class ResponseRenderer {
                     System.out.print(">> ");
                     stats.markFirstToken();
                 }
-                stats.incrementTokens();
+                stats.recordChunk();
                 // Markdown 渲染
                 String rendered = mdRenderer.process(token);
                 if (!rendered.isEmpty()) {
@@ -100,11 +100,13 @@ public class ResponseRenderer {
             });
         } finally {
             indicator.stop();
-        }
-
-        if (reasoningMode.get()) {
-            System.out.print(RESET);
-            System.out.println();
+            if (!responseStarted.get()) indicator.clear();
+            stats.markEnd();
+            lastStats = stats;
+            if (reasoningMode.get()) {
+                System.out.print(RESET);
+                System.out.println();
+            }
         }
         if (!responseStarted.get()) {
             indicator.clear();
@@ -117,17 +119,12 @@ public class ResponseRenderer {
             System.out.print(remaining);
         }
 
-        stats.markEnd();
         System.out.println();
 
         // 输出统计信息
-        if (stats.getTokenCount() > 0) {
+        if (stats.getChunkCount() > 0 || stats.hasUsage()) {
             System.out.println(stats.formatSummary());
         }
-
-        // 保存最近一次统计
-        lastStats.reset();
-        lastStats.setUsage(stats.getPromptTokens(), stats.getCompletionTokens(), stats.getTotalTokens());
 
         return fullResponse.toString();
     }

@@ -11,7 +11,9 @@ import java.util.function.Consumer;
  * 大语言模型客户端接口，定义了与 LLM 交互的基本操作。
  */
 public interface LlmProvider {
+    default int estimateRequestTokens(ConversationContext context,List<Message> messages){return com.jiyingda.codly.context.ContextBudget.estimate(com.alibaba.fastjson.JSON.toJSONString(messages));}
     default void close() { }
+    default String mcpStatus(ConversationContext context,com.alibaba.fastjson.JSONObject refreshed){return "当前模型入口未提供 MCP 管理能力";}
 
     /**
      * 获取当前使用的模型名称。
@@ -60,6 +62,7 @@ public interface LlmProvider {
     String complete(List<Message> messages);
 
     default String complete(List<Message> messages, Consumer<TraceEvent> trace, String purpose) { return complete(messages); }
+    default String complete(List<Message> messages,Consumer<TraceEvent> trace,String purpose,com.jiyingda.codly.core.CancellationToken cancellation){return complete(messages,trace,purpose);}
 
     /**
      * 根据首轮对话内容异步生成一个简短标题。

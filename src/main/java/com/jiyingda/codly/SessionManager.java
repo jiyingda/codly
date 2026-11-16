@@ -38,15 +38,18 @@ public class SessionManager {
      * 处理用户输入：追加到 memory，首次触发异步标题生成。
      */
     public void handleUserMessage(String userInput) {
+        handleUserMessage(userInput,userInput);
+    }
+    public void handleUserMessage(String userInput,String titleInput) {
         Message userMessage = Message.fromUser(userInput);
         memory.add(userMessage);
         memoryManager.appendMessage(userMessage);
 
         // 即使标题请求失败或用户立即退出，也有可刷盘的会话文件。
-        memoryManager.initializeWithSession(userInput.substring(0, Math.min(userInput.length(), 40)));
+        memoryManager.initializeWithSession(titleInput.substring(0, Math.min(titleInput.length(), 40)));
         if (titleGenerated.compareAndSet(false, true)) {
             int currentGeneration = generation.get();
-            ctx.getLlmClient().generateTitleAsync(userInput, title -> {
+            ctx.getLlmClient().generateTitleAsync(titleInput, title -> {
                 synchronized (SessionManager.this) {
                     String name = ConversationTitle.fromModel(title);
                     if (!closed && currentGeneration == generation.get() && name != null) onTitle.accept(name);
@@ -92,11 +95,14 @@ public class SessionManager {
     public String getSessionReference() { return memoryManager.getCurrentSessionFile(); }
 
     public void shutdown() {
+        shutdown(true);
+    }
+    public void shutdown(boolean extract) {
         closed = true;
         logger.info("SessionManager shutdown 开始...");
         memoryManager.flushNow();
         try {
-            memoryManager.flushAndExtractLtmSync(ctx);
+            if(extract)memoryManager.flushAndExtractLtmSync(ctx);
         } finally {
             memoryManager.shutdown();
         }

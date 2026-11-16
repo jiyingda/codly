@@ -21,6 +21,8 @@ public class MemoryCommand implements Runnable, CliCommand {
 
     @Override
     public boolean execute(CommandContext ctx) {
+        if(!List.of("", "clear", "delete").contains(action.toLowerCase(java.util.Locale.ROOT)))throw new IllegalArgumentException("用法：/memory [clear|delete <key>]");
+        if(!action.equalsIgnoreCase("delete")&&!actionArg.isBlank())throw new IllegalArgumentException("/memory "+action+" 不接受额外参数");
         MemoryManager manager = MemoryManager.getInstance();
 
         switch (action.toLowerCase()) {

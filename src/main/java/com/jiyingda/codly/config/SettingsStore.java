@@ -115,6 +115,23 @@ public final class SettingsStore {
             }
         }
         validateMcp(settings.get("mcpServers"));
+        validateRuntime(settings);
+    }
+
+    public static void validateRuntime(JSONObject settings) {
+        for(String key : List.of("context","execution")) if(settings.get(key)!=null&&!(settings.get(key) instanceof JSONObject))throw new IllegalArgumentException(key+" 必须是 JSON 对象。");
+        JSONObject context=settings.getJSONObject("context"),execution=settings.getJSONObject("execution");
+        if(context!=null) {
+            integer(context,"windowTokens",1024,2_000_000);integer(context,"reserveTokens",1,1_000_000);integer(context,"keepRecentMessages",0,100);
+            if(context.get("autoCompact")!=null&&!(context.get("autoCompact") instanceof Boolean))throw new IllegalArgumentException("autoCompact 必须为布尔值。");
+            if(context.get("models")!=null&&!(context.get("models") instanceof JSONObject))throw new IllegalArgumentException("context.models 必须为对象。");
+            JSONObject models=context.getJSONObject("models");if(models!=null)for(String model:models.keySet())integer(models,model,1024,2_000_000);
+        }
+        if(execution!=null){integer(execution,"timeoutSeconds",1,86400);integer(execution,"backgroundTimeoutSeconds",1,604800);integer(execution,"outputLimit",100,100000);}
+    }
+    private static void integer(JSONObject object,String key,int minimum,int maximum) {
+        Object value=object.get(key);if(value==null)return;
+        if(!(value instanceof Number number)||number.doubleValue()!=number.intValue()||number.intValue()<minimum||number.intValue()>maximum)throw new IllegalArgumentException(key+" 必须为 "+minimum+".."+maximum+" 的整数。");
     }
 
     public static void validateMcp(Object value) {

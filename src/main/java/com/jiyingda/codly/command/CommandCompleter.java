@@ -2,47 +2,21 @@ package com.jiyingda.codly.command;
 
 import com.jiyingda.codly.skill.Skill;
 import com.jiyingda.codly.skill.SkillRegistry;
-import org.jline.keymap.KeyMap;
-import org.jline.reader.Binding;
-import org.jline.reader.Buffer;
 import org.jline.reader.Candidate;
 import org.jline.reader.Completer;
 import org.jline.reader.LineReader;
 import org.jline.reader.ParsedLine;
-import org.jline.reader.Parser;
-import org.jline.reader.Reference;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import picocli.CommandLine.Command;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
-/**
- * 斜杠命令补全器：输入 / 时给出匹配的内置命令与已装载 skill。
- * <p>
- * 交互方式：
- * <ul>
- *   <li>逐字符输入 —— 光标处于命令位置时自动列出候选（带描述，按「命令 / Skills」分组），并随输入收窄</li>
- *   <li>↑↓ 或 Tab —— 直接进入 JLine 原生高亮菜单：↑↓ 移动选择，Tab 跳到下一个，Enter 确认候选；
- *       若当前前缀只匹配一项，则直接补全并补一个空格</li>
- * </ul>
- * 候选只在行首的斜杠命令位置给出，因此普通对话输入不会被打扰。
- */
+/** 行首斜杠命令与 Skill 的候选来源；显示及按键由 CommandLineReader 管理。 */
 public class CommandCompleter implements Completer {
-
-    private static final Logger logger = LoggerFactory.getLogger(CommandCompleter.class);
 
     private static final String GROUP_COMMAND = "命令";
     private static final String GROUP_SKILL = "Skills";
     private static final String SKILL_PREFIX = "/skill-";
-
-    /** 逐字符输入时刷新候选列表的 widget 名 */
-    private static final String AUTO_LIST_WIDGET = "codly-auto-list";
-
-    private static final char FIRST_PRINTABLE = 33;   // '!'
-    private static final char LAST_PRINTABLE = 126;   // '~'
 
     @Override
     public void complete(LineReader reader, ParsedLine line, List<Candidate> candidates) {
@@ -56,142 +30,34 @@ public class CommandCompleter implements Completer {
         candidates.addAll(candidatesFor(word));
     }
 
-    /**
-     * 在 LineReader 上启用补全：逐字符输入自动列出候选，上下键或 Tab 直接选择。
-     * 需在 reader 构建完成、且已通过 builder 设置本 completer 之后调用。
-     */
+    /** 安装命令面板；面板与输入共用主 keymap，不进入 JLine 阻塞式菜单。 */
     public void install(LineReader reader) {
-        reader.option(LineReader.Option.AUTO_GROUP, true);
-        reader.option(LineReader.Option.AUTO_MENU_LIST, true);
-
-        reader.getWidgets().put(AUTO_LIST_WIDGET, () -> {
-            reader.callWidget(LineReader.SELF_INSERT);
-            refreshCandidates(reader);
-            return true;
-        });
-
-        KeyMap<Binding> main = reader.getKeyMaps().get(LineReader.MAIN);
-        if (main == null) {
-            logger.warn("未找到 MAIN keymap，跳过斜杠命令自动补全");
-            return;
-        }
-
-        bindTabToMenuComplete(main);
-        bindCandidateNavigation(reader, main);
-        bindEditingRefresh(reader, main);
-
-        // 可见字符默认绑定为 self-insert，接管它们等价于在原有行为上追加一次候选刷新；
-        // Tab（现在被改绑为 menu-complete）等有实际含义的绑定必须保留。
-        int bound = 0;
-        for (char c = FIRST_PRINTABLE; c <= LAST_PRINTABLE; c++) {
-            String key = String.valueOf(c);
-            Binding existing = main.getBound(key);
-            if (existing instanceof Reference ref && !LineReader.SELF_INSERT.equals(ref.name())) {
-                continue;
-            }
-            try {
-                main.bind(new Reference(AUTO_LIST_WIDGET), key);
-                bound++;
-            } catch (Exception e) {
-                logger.debug("按键 {} 绑定自动补全失败：{}", key, e.getMessage());
-            }
-        }
-        logger.info("斜杠命令自动补全已启用（接管 {} 个按键）", bound);
-    }
-
-    private void bindCandidateNavigation(LineReader reader, KeyMap<Binding> main) {
-        KeyMap<Binding> menu = reader.getKeyMaps().get(LineReader.MENU);
-        // 保留原有历史导航；只有正在编辑斜杠命令且存在候选时才进入菜单。
-        for (String name : List.of(LineReader.UP_LINE_OR_HISTORY, LineReader.DOWN_LINE_OR_HISTORY,
-                LineReader.UP_LINE_OR_SEARCH, LineReader.DOWN_LINE_OR_SEARCH)) {
-            String widget = "codly-candidates-" + name;
-            reader.getWidgets().put(widget, () -> {
-                Buffer buffer = reader.getBuffer();
-                if (buffer.cursor() == buffer.length() && isCommandToken(buffer.toString())
-                        && !candidatesFor(buffer.toString()).isEmpty()) {
-                    reader.callWidget(LineReader.MENU_COMPLETE);
-                } else {
-                    reader.callWidget(name);
-                }
-                return true;
-            });
-            rebind(main, name, widget);
-            if (menu != null) {
-                // 原生菜单默认按网格行跳转；单行多列时上下键不会换项。
-                // 始终按候选顺序前后移动，使窄屏和宽屏的选择行为一致。
-                boolean up = name.equals(LineReader.UP_LINE_OR_HISTORY)
-                        || name.equals(LineReader.UP_LINE_OR_SEARCH);
-                rebind(menu, name, up ? LineReader.REVERSE_MENU_COMPLETE : LineReader.MENU_COMPLETE);
-            }
-        }
-    }
-
-    private void bindEditingRefresh(LineReader reader, KeyMap<Binding> main) {
-        for (String name : List.of(LineReader.BACKWARD_DELETE_CHAR, LineReader.DELETE_CHAR)) {
-            String widget = "codly-refresh-" + name;
-            reader.getWidgets().put(widget, () -> {
-                reader.callWidget(name);
-                refreshCandidates(reader);
-                return true;
-            });
-            rebind(main, name, widget);
-        }
-    }
-
-    private static void rebind(KeyMap<Binding> keyMap, String original, String replacement) {
-        // 遍历快照，避免 bind 修改原映射时影响迭代。
-        for (Map.Entry<String, Binding> entry : new ArrayList<>(keyMap.getBoundKeys().entrySet())) {
-            if (entry.getValue() instanceof Reference ref && original.equals(ref.name())) {
-                keyMap.bind(new Reference(replacement), entry.getKey());
-            }
-        }
-    }
-
-    /**
-     * 把 Tab 从 expand-or-complete 改绑为 menu-complete。
-     * <p>
-     * expand-or-complete 在候选多于一个时只把候选「列」出来，不进菜单，此时按 ↑↓ 毫无反应；
-     * menu-complete 一次按下就进入带高亮的原生菜单，↑↓ 可移动选择，Tab 继续下一个，
-     * Enter 确认候选，再次 Enter 提交。唯一匹配时它同样直接补全。
-     */
-    private static void bindTabToMenuComplete(KeyMap<Binding> main) {
-        List<String> tabKeys = new ArrayList<>();
-        for (Map.Entry<String, Binding> entry : main.getBoundKeys().entrySet()) {
-            Binding binding = entry.getValue();
-            if (binding instanceof Reference ref && LineReader.EXPAND_OR_COMPLETE.equals(ref.name())) {
-                tabKeys.add(entry.getKey());
-            }
-        }
-        if (tabKeys.isEmpty()) {
-            tabKeys.add("\t");
-        }
-        for (String key : tabKeys) {
-            try {
-                main.bind(new Reference(LineReader.MENU_COMPLETE), key);
-            } catch (Exception e) {
-                logger.debug("Tab 改绑 menu-complete 失败：{}", e.getMessage());
-            }
-        }
+        if (reader instanceof CommandLineReader commandReader) commandReader.installCommandMenu();
     }
 
     /**
      * 按前缀列出内置命令与 skill 候选。
      */
     static List<Candidate> candidatesFor(String prefix) {
-        String lower = prefix.toLowerCase();
+        String lower = prefix.toLowerCase(java.util.Locale.ROOT);
         List<Candidate> result = new ArrayList<>();
 
         for (CommandEntry entry : builtinCommands()) {
-            if (entry.name().toLowerCase().startsWith(lower)) {
+            if (entry.name().toLowerCase(java.util.Locale.ROOT).startsWith(lower)) {
                 result.add(candidate(entry.name(), GROUP_COMMAND, entry.description()));
             }
         }
         for (Skill skill : SkillRegistry.getInstance().all()) {
             String name = SKILL_PREFIX + skill.getName();
-            if (name.toLowerCase().startsWith(lower)) {
+            if (name.toLowerCase(java.util.Locale.ROOT).startsWith(lower)) {
                 result.add(candidate(name, GROUP_SKILL, skill.getDescription()));
             }
         }
+        List<String> priority = List.of("/help", "/model", "/permissions", "/resume", "/clear", "/compact", "/context", "/mcp", "/tasks", "/trace");
+        result.sort(java.util.Comparator.comparingInt((Candidate candidate) -> {
+            int index = priority.indexOf(candidate.value());
+            return index < 0 ? priority.size() : index;
+        }).thenComparing(Candidate::value));
         return result;
     }
 
@@ -222,45 +88,8 @@ public class CommandCompleter implements Completer {
         return entries;
     }
 
-    /**
-     * 逐字符输入后刷新候选列表。仅在命令位置、且存在未完全匹配的候选时才打印，
-     * 避免普通输入和历史回滚时产生噪音。
-     */
-    private void refreshCandidates(LineReader reader) {
-        try {
-            Buffer buffer = reader.getBuffer();
-            String before = buffer.upToCursor();
-            if (buffer.cursor() != buffer.length() || !isCommandToken(buffer.toString())) {
-                return;
-            }
-            ParsedLine parsed = reader.getParser().parse(before, before.length(), Parser.ParseContext.COMPLETE);
-            List<Candidate> candidates = new ArrayList<>();
-            complete(reader, parsed, candidates);
-            if (candidates.isEmpty()) {
-                return;
-            }
-            if (candidates.size() == 1 && candidates.get(0).value().equals(parsed.word())) {
-                return;
-            }
-            reader.callWidget(LineReader.LIST_CHOICES);
-        } catch (Exception e) {
-            logger.debug("刷新补全候选失败：{}", e.getMessage());
-        }
-    }
-
-    /**
-     * 判断光标前的内容是否是一个「正在输入的斜杠命令」：以 / 开头且尚未出现空白。
-     */
-    private static boolean isCommandToken(String text) {
-        if (text == null || !text.startsWith("/")) {
-            return false;
-        }
-        for (int i = 0; i < text.length(); i++) {
-            if (Character.isWhitespace(text.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
+    static boolean isCommandToken(String text) {
+        return text != null && text.startsWith("/") && text.chars().noneMatch(Character::isWhitespace);
     }
 
     private record CommandEntry(String name, String description) {}

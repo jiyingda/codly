@@ -23,6 +23,88 @@ import static org.junit.Assert.*;
 public class ChatSessionTest {
     @Rule public TemporaryFolder temporary = new TemporaryFolder();
 
+    @Test public void compactKeepsFirstQuestionAndStructuredRolesWithoutChatOrClearingTheOriginalLog() {
+        List<List<Message>> summaries = new ArrayList<>();
+        FakeProvider provider = new FakeProvider() {
+            @Override public String complete(List<Message> messages) { summaries.add(messages); return "已完成的工作和后续任务"; }
+        };
+        ConversationContext ctx = context(provider);
+        FakeMemory memory = new FakeMemory();
+        ChatSession session = new ChatSession(ctx, memory, () -> "独立系统提示词", title -> {});
+        assertNull(session.compactConversation());
+        assertTrue(summaries.isEmpty());
+        session.send("首条用户目标", null);
+        ctx.getMemory().add(Message.fromTool("tool-1", "工具结果"));
+        Message prompt = ctx.getSystemPrompt();
+        assertEquals("已完成的工作和后续任务", session.compactConversation());
+        assertEquals(1, provider.requests);
+        assertEquals(1, provider.titleRequests);
+        var summarized = com.alibaba.fastjson.JSON.parseArray(summaries.get(0).get(1).getContent().split("\\n\\n", 2)[0]);
+        assertEquals("user", summarized.getJSONObject(0).getString("role"));
+        assertEquals("首条用户目标", summarized.getJSONObject(0).getString("content"));
+        assertEquals("tool", summarized.getJSONObject(2).getString("role"));
+        assertEquals("tool-1", summarized.getJSONObject(2).getString("tool_call_id"));
+        assertSame(prompt, ctx.getSystemPrompt());
+        assertEquals(1, ctx.getMemory().size());
+        assertTrue(ctx.getMemory().get(0).getContent().contains("已完成的工作和后续任务"));
+        assertEquals(2, memory.messages.size());
+        assertEquals("首条用户目标", memory.messages.get(0).getContent());
+        session.close();
+        assertThrows(IllegalStateException.class, session::compactConversation);
+    }
+
+    @Test public void failedOrEmptyCompactionDoesNotAlterConversation() {
+        java.util.concurrent.atomic.AtomicReference<String> result = new java.util.concurrent.atomic.AtomicReference<>();
+        FakeProvider provider = new FakeProvider() {
+            @Override public String complete(List<Message> messages) {
+                if ("throw".equals(result.get())) throw new IllegalStateException("模型失败");
+                return result.get();
+            }
+        };
+        ConversationContext ctx = context(provider);
+        ChatSession session = new ChatSession(ctx, new FakeMemory(), () -> "prompt", title -> {});
+        ctx.getMemory().add(Message.fromUser("只有一条用户消息也需要保留"));
+        String before = com.alibaba.fastjson.JSON.toJSONString(ctx.getMemory());
+        for (String value : new String[] {null, "  ", "throw"}) {
+            result.set(value);
+            assertThrows(IllegalStateException.class, session::compactConversation);
+            assertEquals(before, com.alibaba.fastjson.JSON.toJSONString(ctx.getMemory()));
+        }
+        assertEquals(0, provider.requests);
+        session.close();
+    }
+
+    @Test public void cliClearResetsTitleGenerationAndGrantsThroughSharedLifecycle() throws Exception {
+        List<Consumer<String>> callbacks = new ArrayList<>();
+        List<String> titles = new ArrayList<>();
+        FakeProvider provider = new FakeProvider() {
+            @Override public void generateTitleAsync(String input, Consumer<String> callback) { callbacks.add(callback); }
+        };
+        var ctx = new com.jiyingda.codly.command.CommandContext(new ArrayList<>(), provider, temporary.getRoot().toPath());
+        FakeMemory memory = new FakeMemory();
+        ChatSession session = new ChatSession(ctx, memory, () -> "prompt", titles::add);
+        ctx.setSession(session);
+        ctx.setApprovalPolicy(ApprovalPolicy.ASSISTED);
+        ctx.setApprovalHandler(request -> ApprovalDecision.ALLOW_SESSION);
+        assertTrue(ctx.confirm("Bash", "{\"command\":\"unknown\"}", "unknown"));
+        session.send("old", null);
+        new com.jiyingda.codly.command.ClearCommand().execute(ctx);
+        assertTrue(ctx.getMemory().isEmpty());
+        assertTrue(memory.messages.isEmpty());
+        assertTrue(memory.flushed);
+        assertEquals(ApprovalPolicy.ASSISTED, ctx.getApprovalPolicy());
+        assertEquals(temporary.getRoot().toPath().toRealPath(), session.getWorkspace());
+        ctx.setApprovalHandler(request -> ApprovalDecision.DENY);
+        assertFalse(ctx.confirm("Bash", "{\"command\":\"unknown\"}", "unknown"));
+        session.send("new", null);
+        assertEquals(2, callbacks.size());
+        callbacks.get(0).accept("旧标题");
+        assertTrue(titles.isEmpty());
+        callbacks.get(1).accept("新标题");
+        assertEquals(List.of("新标题"), titles);
+        session.close();
+    }
+
     @Test public void sharedSessionPersistsBodyRatherThanRenderedStreamAndRefreshesPrompt() {
         FakeProvider provider = new FakeProvider();
         FakeMemory store = new FakeMemory();

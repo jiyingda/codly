@@ -123,6 +123,23 @@ public class McpHttpTest {
         }
     }
 
+    @Test public void reconnectReplacesServerDefinitionsAndClearsStaleTools() {
+        FunctionManager manager=new FunctionManager(object("old",config()));
+        try {
+            var ctx=context();var trace=new ArrayList<TraceEvent>();ctx.setTraceEvents(trace::add);
+            assertTrue(manager.mcpStatus(ctx,null).contains("2 个工具"));
+            assertTrue(manager.hasFunction(McpRegistry.toolName("old","query")));
+            String status=manager.mcpStatus(ctx,object("new",config()));
+            assertTrue(status.contains("new"));assertFalse(status.contains("old"));
+            assertFalse(manager.hasFunction(McpRegistry.toolName("old","query")));
+            assertTrue(manager.hasFunction(McpRegistry.toolName("new","query")));
+            assertEquals(2,initializations.get());assertEquals(1,deletes.get());
+            assertFalse(JSON.toJSONString(trace).contains("fake-test-secret"));
+            assertEquals("未配置 MCP 服务器",manager.mcpStatus(ctx,new JSONObject()));
+            assertFalse(manager.hasFunction(McpRegistry.toolName("new","query")));
+        } finally {manager.close();}
+    }
+
     @Test public void namesRemainUniqueAndModelCompatible() {
         String a=McpRegistry.toolName("one-two","get.weather"),b=McpRegistry.toolName("one_two","get.weather");
         assertNotEquals(a,b);assertTrue(a.matches("[A-Za-z0-9_]{1,64}"));

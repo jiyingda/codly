@@ -22,7 +22,7 @@ import java.util.Map;
 public class FunctionManager {
 
     private final Map<String, FunctionCallApi> functions = new HashMap<>();
-    private final com.jiyingda.codly.mcp.McpRegistry mcp;
+    private com.jiyingda.codly.mcp.McpRegistry mcp;
 
     /**
      * 构造函数，初始化默认的 functions
@@ -40,6 +40,9 @@ public class FunctionManager {
         registerFunction(new GrepFunctionCall());
         registerFunction(new ListDirectoryFunctionCall());
         registerFunction(new ExecBashFunctionCall());
+        registerFunction(new TaskFunction("task_status"));
+        registerFunction(new TaskFunction("task_output"));
+        registerFunction(new TaskFunction("task_stop"));
         registerFunction(new SystemInfoFunctionCall());
         registerFunction(new WebSearchFunctionCall());
         registerFunction(new KbListFunctionCall());
@@ -57,6 +60,10 @@ public class FunctionManager {
     }
 
     public void prepareMcp(ConversationContext context) { mcp.load(context.cancellation(), context::emitTrace); }
+    public synchronized String mcpStatus(ConversationContext context,com.alibaba.fastjson.JSONObject refreshed) {
+        if(refreshed!=null){mcp.close();mcp=new com.jiyingda.codly.mcp.McpRegistry(refreshed);}
+        prepareMcp(context);return mcp.status();
+    }
     public void close() { mcp.close(); }
 
     /**

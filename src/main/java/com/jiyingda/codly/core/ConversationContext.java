@@ -28,9 +28,31 @@ public class ConversationContext {
     private volatile ApprovalPolicy approvalPolicy = ApprovalPolicy.ASK;
     private volatile CancellationToken cancellation = new CancellationToken();
     private volatile boolean shouldQuit;
-    private java.util.function.Consumer<ToolEvent> toolEvents;
-    private java.util.function.Consumer<TraceEvent> traceEvents;
-    private final Map<String, String> toolTraceIds = new java.util.HashMap<>();
+    private volatile java.util.function.Consumer<ToolEvent> toolEvents;
+    private volatile java.util.function.Consumer<TraceEvent> traceEvents;
+    private final Map<String, String> toolTraceIds = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile ToolEvent activeTool;
+    private Path configRoot;
+    private com.jiyingda.codly.context.ProjectContext project;
+    private Path projectWorkspace;
+    private final com.jiyingda.codly.context.ContextBudget budget=new com.jiyingda.codly.context.ContextBudget();
+    private com.alibaba.fastjson.JSONObject executionOptions=new com.alibaba.fastjson.JSONObject();
+    private com.jiyingda.codly.task.TaskManager tasks;
+    public void configureRuntime(Path configRoot,com.alibaba.fastjson.JSONObject contextOptions,com.alibaba.fastjson.JSONObject executionOptions){this.configRoot=configRoot;budget.configure(contextOptions);this.executionOptions=executionOptions;}
+    public com.jiyingda.codly.context.ContextBudget budget(){return budget;}
+    public com.alibaba.fastjson.JSONObject executionOptions(){return executionOptions;}
+    public synchronized com.jiyingda.codly.context.ProjectContext project(){
+        if(configRoot==null)return null;
+        if(project==null||!startupPath.equals(projectWorkspace)){project=new com.jiyingda.codly.context.ProjectContext(startupPath,configRoot);projectWorkspace=startupPath;}
+        return project;
+    }
+    public synchronized com.jiyingda.codly.task.TaskManager tasks(){
+        if(tasks==null)try{tasks=new com.jiyingda.codly.task.TaskManager(configRoot==null?java.nio.file.Files.createTempDirectory("codly-tasks-"):configRoot.resolve("tasks"),configRoot!=null);}
+        catch(java.io.IOException error){throw new IllegalStateException("无法初始化任务日志："+error.getMessage());}return tasks;
+    }
+    public synchronized void closeTasks(){if(tasks!=null)tasks.close();}
+    public synchronized int runningTasks(){return tasks==null?0:(int)tasks.list().stream().filter(job->"RUNNING".equals(job.get("state"))).count();}
+    public java.util.function.Consumer<String> processOutputSink(){ToolEvent event=activeTool;return text->{if(event!=null)emitTool(new ToolEvent(event.id(),event.name(),event.arguments(),text,ToolEvent.State.OUTPUT));};}
     /** 当前会话已激活的 skill,按激活顺序,去重 */
     private final Map<String, Skill> activeSkills = new LinkedHashMap<>();
 
@@ -124,7 +146,9 @@ public class ConversationContext {
 
     public void emitTool(ToolEvent event) {
         if (toolEvents != null) toolEvents.accept(event);
+        if(event.state()==ToolEvent.State.REQUESTED)activeTool=event;
         if (traceEvents == null) return;
+        if(event.state()==ToolEvent.State.OUTPUT){String id=toolTraceIds.get(event.id());if(id!=null)emitTrace(TraceEvent.of(id,TraceEvent.Kind.TOOL,TraceEvent.Phase.APPEND,"工具输出 · "+event.name(),event.result()));return;}
         if (event.state() == ToolEvent.State.REQUESTED) {
             String id = TraceEvent.newId();
             toolTraceIds.put(event.id(), id);
@@ -132,7 +156,7 @@ public class ConversationContext {
         } else {
             String id = toolTraceIds.remove(event.id());
             if (id == null) id = TraceEvent.newId();
-            boolean failed = event.state() == ToolEvent.State.FAILED || event.result() != null && (event.result().startsWith("用户拒绝") || event.result().startsWith("执行失败") || event.result().startsWith("执行 execBash 失败"));
+            boolean failed = event.failed();
             emitTrace(TraceEvent.of(id, TraceEvent.Kind.TOOL, event.state() == ToolEvent.State.CANCELLED ? TraceEvent.Phase.CANCELLED
                     : failed ? TraceEvent.Phase.FAILED : TraceEvent.Phase.COMPLETE, "工具调用 · " + event.name(), "\n\n返回结果\n" + event.result()));
         }
@@ -148,6 +172,11 @@ public class ConversationContext {
 
     void beginTurn(CancellationToken token) {
         cancellation = Objects.requireNonNull(token);
+    }
+
+    void endTurn(CancellationToken token) {
+        if (cancellation == token) cancellation = new CancellationToken();
+        activeTool=null;
     }
 
     public Message getSystemPrompt() {

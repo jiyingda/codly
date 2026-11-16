@@ -1,63 +1,40 @@
-/**
- * @(#)ProgressIndicator.java, 4月 18, 2026.
- * <p>
- * Copyright 2026 chapaof.com. All rights reserved.
- * chapaof.COM PROPRIETARY/CONFIDENTIAL. Use is subject to license terms.
- */
 package com.jiyingda.codly.util;
 
-/**
- * 简单的终端进度指示器，使用 wait/notify 替代 busy-wait + sleep。
- * @author jiyingda
- */
-@SuppressWarnings("BusyWait")
+/** 每次响应独立的终端进度动画；stop 幂等，返回后不再输出并终止线程。 */
 public class ProgressIndicator {
-
     private static final String CLEAR_LINE = "\r\033[2K";
     private static final String[] FRAMES = {"|", "/", "-", "\\"};
-    private static final long FRAME_DELAY_MS = 320L;
-
     private final Thread thread;
-    private volatile boolean running = false;
+    private boolean started;
+    private boolean stopped;
 
     public ProgressIndicator() {
-        this.thread = new Thread(this::runLoop, "codly-progress");
-        this.thread.setDaemon(true);
+        thread = new Thread(this::runLoop, "codly-progress");
+        thread.setDaemon(true);
     }
 
     private void runLoop() {
-        int frameIndex = 0;
+        int frame = 0;
         while (true) {
             synchronized (this) {
-                while (!running) {
-                    try {
-                        wait();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                }
+                if (stopped) return;
+                System.out.print("\r" + FRAMES[frame++ % FRAMES.length]);
+                System.out.flush();
             }
-            System.out.print("\r" + FRAMES[frameIndex]);
-            System.out.flush();
-            frameIndex = (frameIndex + 1) % FRAMES.length;
-            try {
-                Thread.sleep(FRAME_DELAY_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
+            try { Thread.sleep(320); }
+            catch (InterruptedException error) { Thread.currentThread().interrupt(); return; }
         }
     }
 
-    public void start() {
-        running = true;
+    public synchronized void start() {
+        if (started || stopped) return;
+        started = true;
         thread.start();
     }
 
     public synchronized void stop() {
-        running = false;
-        notifyAll();
+        stopped = true;
+        thread.interrupt();
     }
 
     public void clear() {
